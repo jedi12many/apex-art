@@ -58,3 +58,17 @@ node test/vice-check.js "C:\path\to\GTK3VICE-3.10-win64"
 ```
 
 `--ntsc` runs on an NTSC machine; `--cycles 12000000,15000017` screenshots each listed cycle count to check the split is stable across frames. It ends with PASS or FAIL and exits with 1 on any failure.
+
+## Showcase videos
+
+`showcase/make.js` renders a short video for each perspective, plus a reel of all five, into `showcase/out/`:
+- the four height-map views build themselves from flat ground, then the hero walks a route in hi-res and carries on in multicolor
+- the dungeon looks around, then follows the right-hand wall through the maze, with stone walls in hi-res and brick in multicolor
+
+Every frame is rendered with the editor's own renderer and compositor, so each one is a real C64 screen (character set, screen and colour RAM, ROM-font status row). The hero moves smoothly because its characters are rebuilt every frame, the way C64 games draw software sprites. The script reports any frame that runs out of free character slots.
+
+```bash
+node showcase/make.js --rom "C:\path\to\GTK3VICE-3.10-win64\C64\chargen-901225-01.bin"
+```
+
+It needs ffmpeg on the PATH. `--rom` makes the status row use the real C64 ROM font; without it APEXSCII's own letters stand in. `--only iso,dungeon` renders just those views. Videos are 768×544 (2× with the C64 border) at 25 fps.

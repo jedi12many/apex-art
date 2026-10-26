@@ -56,6 +56,8 @@
   const W = 320, H = 200, N = 8, MAX_H = 6;
   const ORIGIN_X = 144, BASE_Y = 48; // multiples of 8 keep every edge char-aligned
 
+  // Map cells: m = material index (-1 for nothing), h = height, o = object index (-1 for none).
+  // Optional ox/oy shift a cell's object by pixels, for moving it smoothly between cells.
   function defaultMap() {
     const rows = [
       'b4 b3 b2 s1 g1 g1 g1T g1',
@@ -170,7 +172,7 @@
         setIdx(gy * n + gx);
         const sx = 152 + (gx - gy) * 8, top = 48 + (gx + gy) * 8 - c.h * 8;
         drawMilitaryBlock(plot, sx, top, MATERIALS[c.m], mc, c.h * 8);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx, top - 14, mc);
+        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + (c.ox || 0), top - 14 + (c.oy || 0), mc);
       }
     },
     oblique(map, plot, mc, setIdx) {
@@ -185,7 +187,7 @@
         const sx = 96 + gx * 16, top = 48 + gy * 16 - c.h * 8;
         drawObliqueBlock(plot, sx, top, MATERIALS[c.m], mc, c.h,
           { N: hAt(gx, gy - 1), E: hAt(gx + 1, gy), S: hAt(gx, gy + 1), W: hAt(gx - 1, gy) });
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx, top - 10, mc);
+        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + (c.ox || 0), top - 10 + (c.oy || 0), mc);
       }
     },
     side(map, plot, mc, setIdx) {
@@ -197,7 +199,7 @@
         const mat = MATERIALS[c.m], sx = 64 + gx * 16 + gz * 8, ground = 176 - gz * 8;
         if (c.h === 0) drawSideBlock(plot, sx, ground, mat, mc, false);
         else for (let z = 0; z < c.h; z++) drawSideBlock(plot, sx, ground - 16 - z * 16, mat, mc, true);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 4, ground - 16 * c.h - 24, mc);
+        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 4 + (c.ox || 0), ground - 16 * c.h - 24 + (c.oy || 0), mc);
       }
     },
   };
@@ -300,7 +302,7 @@
         const sx = ORIGIN_X + (gx - gy) * 16, base = BASE_Y + (gx + gy) * 8;
         if (c.h === 0) drawBlock(plot, sx, base + 16, mat, mc, false);
         else for (let z = 0; z < c.h; z++) drawBlock(plot, sx, base - z * 16, mat, mc, true);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 8, base + 16 - 16 * c.h - 8, mc);
+        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 8 + (c.ox || 0), base + 16 - 16 * c.h - 8 + (c.oy || 0), mc);
       }
     }
     return { ink, col, own, obj };
