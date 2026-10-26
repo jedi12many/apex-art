@@ -1,0 +1,3 @@
+[submodule "apexscii"]
+	path = apexscii
+	url = https://github.com/jedi12many/apexscii.git

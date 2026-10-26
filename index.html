@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apex-art Map Editor</title>
+<style>
+  :root {
+    --bg: #14122b; --panel: #1f1c42; --line: #3a3670; --ink: #e6e4ff; --dim: #9a96c8;
+    --accent: #9ad284; --warn: #e0a060;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-monospace, Consolas, monospace; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--accent); }
+  header span { color: var(--dim); }
+  main { display: grid; grid-template-columns: minmax(0, 700px) minmax(0, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+  h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  button, select, input[type=text] {
+    background: #2a2658; color: var(--ink); border: 1px solid var(--line); border-radius: 5px;
+    padding: 5px 9px; font: inherit; cursor: pointer;
+  }
+  input[type=text], textarea { cursor: text; width: 100%; }
+  textarea { background: #2a2658; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px; font: inherit; resize: vertical; }
+  button:hover { border-color: var(--dim); }
+  button.on { background: var(--accent); color: #102010; border-color: var(--accent); }
+  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 2px; vertical-align: -1px; }
+  canvas { image-rendering: pixelated; display: block; max-width: 100%; }
+  #frame { padding: 24px; border-radius: 6px; }
+  #scr { width: 100%; height: auto; aspect-ratio: 8/5; cursor: crosshair; }
+  #status { color: var(--dim); min-height: 1.4em; margin: 6px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lbl { color: var(--dim); font-size: 12px; margin-right: 4px; }
+  #mini { display: grid; grid-template-columns: repeat(8, 28px); gap: 2px; }
+  #mini button { width: 28px; height: 28px; padding: 0; font-size: 11px; border-radius: 3px; color: #000; font-weight: bold; }
+  #mini button.void { background: transparent; color: var(--dim); }
+  .cols { display: flex; gap: 16px; flex-wrap: wrap; }
+  #cs { cursor: pointer; }
+  #ed { cursor: crosshair; border: 1px solid var(--line); }
+  #info { color: var(--dim); margin: 6px 0; min-height: 2.8em; }
+  .legend span { margin-right: 10px; font-size: 12px; color: var(--dim); }
+  .note { color: var(--dim); font-size: 12px; }
+  .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>APEX-ART</h1>
+  <span>map editor for the APEXSCII character sets · Commodore 64 · five perspectives · hi-res 8×8 or multicolor 4×8</span>
+  <span style="flex:1"></span><a href="art.html" style="color:var(--dim)">Art tool →</a>
+</header>
+<main>
+  <section>
+    <h2 id="viewTitle">Map · live C64 screen</h2>
+    <div class="row" id="persps"></div>
+    <div class="row">
+      <span class="lbl">Mode</span><button id="mHires">Hi-res 8×8</button><button id="mMc">Multicolor 4×8</button>
+      <span id="mcSel"><span class="lbl">MC1 $D022</span><select id="mc1"></select>
+        <span class="lbl">MC2 $D023</span><select id="mc2"></select></span>
+    </div>
+    <div class="row" id="tools"></div>
+    <div class="row" id="mats"></div>
+    <div class="row" id="objs"></div>
+    <div id="frame"><canvas id="scr" width="640" height="400"></canvas></div>
+    <div id="status">Hover the screen to inspect cells. Click to apply the tool; shift-click lowers; alt-click opens the cell's glyph.</div>
+    <div class="cols">
+      <div>
+        <div class="lbl" id="miniLbl"></div>
+        <div id="mini"></div>
+        <div class="row" id="moves" style="margin-top:6px"></div>
+      </div>
+      <div style="flex:1; min-width:220px">
+        <div class="row"><span class="lbl">Status bar · 1–3 lines · {text} = reverse video</span></div>
+        <div class="row"><textarea id="caption" rows="3" spellcheck="false"></textarea></div>
+        <div class="row">
+          <label><input type="checkbox" id="split"> ROM font status bar (raster split)</label>
+          <button id="romBtn">Load chargen ROM…</button><input type="file" id="romFile" hidden>
+        </div>
+        <div class="note" id="romNote"></div>
+        <div class="row">
+          <span class="lbl">Bg</span><select id="bg"></select>
+          <span class="lbl">Border</span><select id="border"></select>
+          <span class="lbl">Text</span><select id="tcol"></select>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="grid"> char grid</label>
+          <button id="resetMap">Reset map</button>
+        </div>
+        <div id="stats" class="note"></div>
+      </div>
+    </div>
+    <h2 style="margin-top:14px">Export</h2>
+    <div class="row">
+      <button id="xDemo">Map → runnable .prg</button>
+      <button id="xMapAsm">Map → .asm</button>
+      <button id="xBin">Charset .bin</button>
+      <button id="xPrg">Charset .prg ($3800)</button>
+      <button id="xAsm">Charset .asm</button>
+    </div>
+    <div class="note">The runnable .prg loads with <b>LOAD"*",8,1 / RUN</b> (or drag into VICE). The map export includes the composited charset
+      and, in multicolor, sets $D016/$D022/$D023 for you.</div>
+  </section>
+
+  <section>
+    <h2>Character set</h2>
+    <div class="row">
+      <button id="vBase" class="on">Base set</button>
+      <button id="vComp">With map composites</button>
+      <button id="imp">Import .bin</button><input type="file" id="file" accept=".bin,.prg,.64c" hidden>
+      <button id="resetCs">Reset charset</button>
+    </div>
+    <canvas id="cs" width="434" height="434"></canvas>
+    <div class="legend" id="legend"></div>
+    <h2 style="margin-top:14px">Glyph editor</h2>
+    <div class="cols">
+      <canvas id="ed" width="256" height="256"></canvas>
+      <div style="flex:1; min-width:200px">
+        <div id="info"></div>
+        <div class="row" id="vals"></div>
+        <div class="row">
+          <button data-op="clear">Clear</button><button data-op="invert">Invert</button>
+          <button data-op="fliph">Flip ↔</button><button data-op="flipv">Flip ↕</button>
+        </div>
+        <div class="row">
+          <button data-op="left">←</button><button data-op="right">→</button>
+          <button data-op="up">↑</button><button data-op="down">↓</button>
+          <button data-op="copy">Copy</button><button data-op="paste">Paste</button>
+        </div>
+        <div class="lbl">Tiled 3×3 preview</div>
+        <canvas id="tile" width="96" height="96" style="width:144px;height:144px;margin-top:4px"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="apexscii/apexscii.js"></script>
+<script src="apex-core.js"></script>
+<script>
+'use strict';
+// Each perspective has its own default charset per mode, built on first use.
+const DEF = {};
+const def = (persp, mode) => DEF[persp + mode] || (DEF[persp + mode] = APEX.buildDefault(mode, persp));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+};
+
+function loadCharset(persp, mode) {
+  const s = store.get(APEX.charsetKey(persp, mode));
+  if (s && s.length === 4096) {
+    const g = [];
+    for (let i = 0; i < 256; i++) g.push(Uint8Array.from({ length: 8 }, (_, y) => parseInt(s.substr(i * 16 + y * 2, 2), 16)));
+    return g;
+  }
+  return def(persp, mode).glyphs.map(g => Uint8Array.from(g));
+}
+function loadMap() {
+  try {
+    const m = JSON.parse(store.get('apexscii.map'));
+    if (m && m.cells && m.cells.length === 64) {
+      return Object.assign({ mode: 'hires', mc1: 12, mc2: 11, split: true, persp: 'iso', dungeon: APEX.defaultDungeon() }, m);
+    }
+  } catch (e) {}
+  return APEX.defaultMap();
+}
+
+let map = loadMap(), base = loadCharset(map.persp, map.mode);
+let D = def(map.persp, map.mode), NAMES = D.names;
+let tool = 'raise', mat = 0, obj = 0, view = 'base', sel = 0x40, clip = null, pen = 3;
+const isDungeon = () => map.persp === 'dungeon';
+let raster, comp, rom = loadRom();
+// The C64's own chargen ROM, if the user supplies it, gives an exact preview of the status bar.
+function loadRom() {
+  const s = store.get('apexscii.rom');
+  return s && s.length === 4096 ? Uint8Array.from({ length: 2048 }, (_, i) => parseInt(s.substr(i * 2, 2), 16)) : null;
+}
+
+const $ = id => document.getElementById(id);
+const PAL = APEX.PALETTE;
+// A glyph is drawn as 4x8 fat pixels when the map is multicolor and the slot holds MC data.
+const isMC = i => map.mode === 'mc' && (APEX.isMCSlot(i, map.persp) || (view === 'comp' && !!comp && comp.allocated.includes(i)));
+const mcCols = () => [map.bg, map.mc1, map.mc2, APEX.MATERIALS[isDungeon() ? map.dungeon.mat : mat].mcColor];
+
+// ------------------------------------------------------------ controls
+const HEIGHT_TOOLS = [['raise', 'Raise'], ['lower', 'Lower'], ['paint', 'Paint'], ['object', 'Object'], ['erase', 'Erase']];
+const MAZE_TOOLS = [['wall', 'Wall'], ['door', 'Door'], ['floor', 'Floor'], ['player', 'Player']];
+let TOOLS = HEIGHT_TOOLS;
+function buttons(container, items, isOn, onClick) {
+  container.innerHTML = '';
+  items.forEach((it, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = it.html;
+    if (isOn(i)) b.classList.add('on');
+    b.onclick = () => { onClick(i); };
+    container.appendChild(b);
+  });
+}
+function drawControls() {
+  const persps = Object.keys(APEX.PERSPECTIVES);
+  buttons($('persps'), persps.map(p => ({ html: APEX.PERSPECTIVES[p].name })), i => persps[i] === map.persp, i => setPersp(persps[i]));
+  TOOLS = isDungeon() ? MAZE_TOOLS : HEIGHT_TOOLS;
+  if (!TOOLS.some(t => t[0] === tool)) tool = TOOLS[0][0];
+  buttons($('tools'), TOOLS.map(t => ({ html: t[1] })), i => TOOLS[i][0] === tool, i => { tool = TOOLS[i][0]; drawControls(); });
+  const swatches = m => map.mode === 'mc'
+    ? [m.mcColor, map.mc1, map.mc2].map(c => `<span class="sw" style="background:${PAL[c]}"></span>`).join('')
+    : ['T', 'L', 'R'].map(f => `<span class="sw" style="background:${PAL[m.colors[f]]}"></span>`).join('');
+  // In the dungeon the material buttons set the whole maze's wall material.
+  buttons($('mats'), APEX.MATERIALS.map(m => ({ html: swatches(m) + ' ' + m.name })), i => i === (isDungeon() ? map.dungeon.mat : mat), i => {
+    if (isDungeon()) { map.dungeon.mat = i; rebuild(); return; }
+    mat = i; if (tool !== 'paint' && tool !== 'raise') tool = 'paint'; drawControls(); drawCharset(); drawEditor();
+  });
+  $('objs').style.display = isDungeon() ? 'none' : '';
+  buttons($('objs'), APEX.OBJECTS.map(o => ({ html: '◆ ' + o.name })), i => i === obj, i => { obj = i; tool = 'object'; drawControls(); });
+  $('viewTitle').textContent = `${APEX.PERSPECTIVES[map.persp].name} map · live C64 screen`;
+}
+for (const id of ['bg', 'border', 'tcol', 'mc1', 'mc2']) {
+  $(id).innerHTML = APEX.COLOR_NAMES.map((n, i) => `<option value="${i}">${i} ${n}</option>`).join('');
+}
+
+function applyTool(idx, shift) {
+  const c = map.cells[idx];
+  let t = tool;
+  if (shift && t === 'raise') t = 'lower';
+  if (t === 'raise') { if (c.m < 0) { c.m = mat; c.h = 0; } else c.h = Math.min(APEX.MAX_H, c.h + 1); }
+  else if (t === 'lower') { c.h = Math.max(0, c.h - 1); }
+  else if (t === 'paint') { if (c.m < 0) c.h = 1; c.m = mat; }
+  else if (t === 'object') { if (c.m >= 0) c.o = c.o === obj ? -1 : obj; }
+  else if (t === 'erase') { c.m = -1; c.o = -1; c.h = 0; }
+  rebuild();
+}
+
+// Dungeon: the mini grid edits the maze; the player moves with the buttons or arrow keys / WASD.
+function applyMaze(x, y) {
+  const d = map.dungeon, here = APEX.dungeonAt(d, x, y);
+  if (tool === 'player') { if (here !== '#') { d.x = x; d.y = y; } }
+  else if (!(x === d.x && y === d.y)) {
+    const ch = { wall: '#', door: 'D', floor: '.' }[tool];
+    d.rows[y] = d.rows[y].slice(0, x) + ch + d.rows[y].slice(x + 1);
+  }
+  rebuild();
+}
+function move(action) {
+  const d = map.dungeon;
+  if (action === 'left') d.dir = (d.dir + 3) % 4;
+  else if (action === 'right') d.dir = (d.dir + 1) % 4;
+  else {
+    const s = action === 'forward' ? 1 : -1, nx = d.x + APEX.DIRS[d.dir][0] * s, ny = d.y + APEX.DIRS[d.dir][1] * s;
+    if (APEX.dungeonAt(d, nx, ny) !== '#') { d.x = nx; d.y = ny; } // doors can be walked through
+  }
+  rebuild();
+}
+document.addEventListener('keydown', e => {
+  if (!isDungeon() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  const action = { ArrowUp: 'forward', w: 'forward', ArrowDown: 'back', s: 'back', ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right' }[e.key];
+  if (action) { e.preventDefault(); move(action); }
+});
+
+// ------------------------------------------------------------ rendering
+function rebuild() {
+  raster = APEX.renderScene(map);
+  comp = APEX.composite(base, raster, map);
+  drawControls(); drawScreen(); drawMini(); drawCharset(); drawEditor(); drawStats();
+  store.set('apexscii.map', JSON.stringify(map));
+  store.set(APEX.charsetKey(map.persp, map.mode), base.map(g => Array.from(g, b => b.toString(16).padStart(2, '0')).join('')).join(''));
+}
+
+const off = document.createElement('canvas'); off.width = 320; off.height = 200;
+function drawScreen() {
+  off.getContext('2d').putImageData(new ImageData(APEX.screenRGB(comp.chars, comp.screen, comp.color, map, rom), 320, 200), 0, 0);
+  const ctx = $('scr').getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, 640, 400);
+  if ($('grid').checked) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x <= 40; x++) { ctx.moveTo(x * 16 + .5, 0); ctx.lineTo(x * 16 + .5, 400); }
+    for (let y = 0; y <= 25; y++) { ctx.moveTo(0, y * 16 + .5); ctx.lineTo(640, y * 16 + .5); }
+    ctx.stroke();
+  }
+  $('frame').style.background = PAL[map.border];
+}
+
+function drawMini() {
+  const el = $('mini'); el.innerHTML = '';
+  $('moves').innerHTML = '';
+  if (isDungeon()) {
+    const d = map.dungeon, m = APEX.MATERIALS[d.mat];
+    $('miniLbl').textContent = `Maze · facing ${APEX.DIR_NAMES[d.dir]} at (${d.x},${d.y}) · arrow keys / WASD move`;
+    el.style.gridTemplateColumns = `repeat(${d.size}, 16px)`;
+    for (let y = 0; y < d.size; y++) for (let x = 0; x < d.size; x++) {
+      const b = document.createElement('button'), c = APEX.dungeonAt(d, x, y);
+      b.style.cssText = 'width:16px;height:16px;font-size:10px';
+      if (x === d.x && y === d.y) { b.textContent = '↑→↓←'[d.dir]; b.style.background = '#fff'; }
+      else if (c === '#') b.style.background = PAL[map.mode === 'mc' ? m.mcColor : m.colors.T];
+      else if (c === 'D') b.style.background = PAL[8];
+      else b.className = 'void';
+      b.onclick = () => applyMaze(x, y);
+      el.appendChild(b);
+    }
+    [['left', '↶ Turn'], ['forward', '↑ Forward'], ['back', '↓ Back'], ['right', 'Turn ↷']].forEach(([a, label]) => {
+      const b = document.createElement('button'); b.textContent = label; b.onclick = () => move(a); $('moves').appendChild(b);
+    });
+    return;
+  }
+  $('miniLbl').textContent = {
+    iso: 'Top-down grid (↘ = +x, ↙ = +y)', military: 'Top-down grid (↘ = +x, ↙ = +y)',
+    oblique: 'Top-down grid (north at the top)', side: 'Top-down grid (top row = far side)',
+  }[map.persp];
+  el.style.gridTemplateColumns = '';
+  map.cells.forEach((c, i) => {
+    const b = document.createElement('button');
+    if (c.m < 0) { b.className = 'void'; b.textContent = '·'; }
+    else {
+      const m = APEX.MATERIALS[c.m];
+      b.style.background = PAL[map.mode === 'mc' ? m.mcColor : m.colors.T];
+      b.textContent = c.h + (c.o >= 0 ? APEX.OBJECTS[c.o].name[0] : '');
+    }
+    b.title = `(${i % 8},${(i / 8) | 0})`;
+    b.onclick = e => applyTool(i, e.shiftKey);
+    el.appendChild(b);
+  });
+}
+
+function drawStats() {
+  const s = `Map uses ${comp.allocated.length} of ${comp.freeTotal} free slots for composite cells.`;
+  $('stats').innerHTML = s + (comp.overflow ? ` <span class="warn">${comp.overflow} cells overflowed (nearest glyph used).</span>` : '');
+  if (document.activeElement !== $('caption')) $('caption').value = map.caption;
+  $('split').checked = map.split !== false;
+  $('romNote').innerHTML = map.split === false
+    ? 'Status bar uses the APEXSCII text glyphs; reverse video is off.'
+    : rom ? 'Previewing the status bar with your chargen ROM.'
+          : 'Status bar preview uses APEXSCII text as a stand-in for the ROM font. For an exact preview, load <b>chargen</b> from your VICE install (C64 folder); it stays in this browser.';
+  $('bg').value = map.bg; $('border').value = map.border; $('tcol').value = map.textColor;
+  $('mc1').value = map.mc1; $('mc2').value = map.mc2;
+  $('mHires').classList.toggle('on', map.mode === 'hires'); $('mMc').classList.toggle('on', map.mode === 'mc');
+  $('mcSel').style.display = map.mode === 'mc' ? '' : 'none';
+}
+
+const REGION_TINT = { text: '#2b2860', smooth: '#1f3a32', brick: '#3d2626', lines: '#2c3550', blocks: '#2c3550', free: '#1a1838' };
+const regionOf = i => D.regions.find(r => i >= r.from && i <= r.to).name;
+
+function drawCharset() {
+  $('legend').innerHTML = D.regions.map(r =>
+    `<span><span class="sw" style="background:${REGION_TINT[r.name]};outline:1px solid #555"></span>${APEX.hex(r.from)}-${APEX.hex(r.to)} ${r.name}</span>`).join('');
+  const ctx = $('cs').getContext('2d'), S = 27, set = view === 'comp' ? comp.chars : base;
+  const alloc = new Set(view === 'comp' ? comp.allocated : []), cols = mcCols();
+  ctx.fillStyle = '#0e0c22'; ctx.fillRect(0, 0, 434, 434);
+  for (let i = 0; i < 256; i++) {
+    const ox = 2 + (i % 16) * S, oy = 2 + ((i / 16) | 0) * S, g = set[i];
+    ctx.fillStyle = alloc.has(i) ? '#5a4a10' : REGION_TINT[regionOf(i)];
+    ctx.fillRect(ox, oy, 25, 25);
+    if (isMC(i)) {
+      for (let y = 0; y < 8; y++) for (let fx = 0; fx < 4; fx++) {
+        const v = (g[y] >> (6 - 2 * fx)) & 3;
+        if (v) { ctx.fillStyle = PAL[cols[v]]; ctx.fillRect(ox + 1 + fx * 6, oy + 1 + y * 3, 6, 3); }
+      }
+    } else {
+      ctx.fillStyle = '#e6e4ff';
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (g[y] & (0x80 >> x)) ctx.fillRect(ox + 1 + x * 3, oy + 1 + y * 3, 3, 3);
+    }
+    if (i === sel) { ctx.strokeStyle = '#9ad284'; ctx.lineWidth = 2; ctx.strokeRect(ox - 1, oy - 1, 27, 27); }
+  }
+}
+
+function drawEditor() {
+  const ctx = $('ed').getContext('2d'), g = base[sel], mc = isMC(sel), cols = mcCols();
+  const pw = mc ? 64 : 32, nx = mc ? 4 : 8;
+  const val = (x, y) => mc ? (g[y] >> (6 - 2 * x)) & 3 : (g[y] >> (7 - x)) & 1;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < nx; x++) {
+    const v = val(x, y);
+    ctx.fillStyle = v ? (mc ? PAL[cols[v]] : '#e6e4ff') : ((x + y) & 1 ? '#1a1838' : '#201d44');
+    ctx.fillRect(x * pw, y * 32, pw, 32);
+  }
+  ctx.strokeStyle = '#3a3670'; ctx.beginPath();
+  for (let k = 0; k <= nx; k++) { ctx.moveTo(k * pw + .5, 0); ctx.lineTo(k * pw + .5, 256); }
+  for (let k = 0; k <= 8; k++) { ctx.moveTo(0, k * 32 + .5); ctx.lineTo(256, k * 32 + .5); }
+  ctx.stroke();
+
+  const t = $('tile').getContext('2d'), w = 32 / nx;
+  t.fillStyle = mc ? PAL[map.bg] : '#000'; t.fillRect(0, 0, 96, 96);
+  for (let ty = 0; ty < 3; ty++) for (let tx = 0; tx < 3; tx++)
+    for (let y = 0; y < 8; y++) for (let x = 0; x < nx; x++) {
+      const v = val(x, y);
+      if (v) { t.fillStyle = mc ? PAL[cols[v]] : '#9ad284'; t.fillRect(tx * 32 + x * w, (ty * 8 + y) * 4, w, 4); }
+    }
+
+  $('vals').style.display = mc ? '' : 'none';
+  if (mc) {
+    const labels = ['00 bg $D021', '01 MC1 $D022', '10 MC2 $D023', '11 cell colour'];
+    $('vals').innerHTML = labels.map((l, v) =>
+      `<button data-pen="${v}" class="${v === pen ? 'on' : ''}"><span class="sw" style="background:${PAL[cols[v]]};outline:1px solid #555"></span>${l}</button>`).join('');
+    $('vals').querySelectorAll('[data-pen]').forEach(b => b.onclick = () => { pen = +b.dataset.pen; drawEditor(); });
+  }
+
+  const changed = !g.every((b, k) => b === D.glyphs[sel][k]);
+  const isFree = sel >= 0x40 && g.every(b => b === 0);
+  $('info').innerHTML = `<b style="color:var(--ink)">${APEX.hex(sel)}</b> (${sel}) · ${mc ? 'multicolor · ' : ''}${NAMES[sel]}` +
+    `${changed ? ' · <span class="warn">edited</span>' : ''}<br>` +
+    `bytes ${Array.from(g, b => APEX.hex(b)).join(' ')}${isFree ? '<br>blank slot — available to the map compositor' : ''}`;
+}
+
+// ------------------------------------------------------------ screen interaction
+function screenPos(e) {
+  const r = $('scr').getBoundingClientRect();
+  return [Math.floor((e.clientX - r.left) / r.width * 320), Math.floor((e.clientY - r.top) / r.height * 200)];
+}
+$('scr').addEventListener('mousemove', e => {
+  const [x, y] = screenPos(e);
+  if (x < 0 || y < 0 || x >= 320 || y >= 200) return;
+  const cx = x >> 3, cy = y >> 3, k = cy * 40 + cx, code = comp.screen[k], own = raster.own[y * 320 + x];
+  const inStatus = map.split !== false && cy >= 25 - APEX.statusRows(map);
+  const nm = inStatus ? `ROM font${code & 0x80 ? ' (reverse)' : ''}` : comp.allocated.includes(code) ? 'map composite' : NAMES[code];
+  const cr = comp.color[k], multi = map.mode === 'mc' && (cr & 8);
+  let col = '';
+  if (own >= 0) { const c = map.cells[own]; col = ` · column (${own % 8},${(own / 8) | 0}) ${APEX.MATERIALS[c.m].name} h${c.h}`; }
+  $('status').textContent = `cell ${cx},${cy} · ${APEX.hex(code)} ${nm} · ${multi ? 'MC ' : ''}${APEX.COLOR_NAMES[cr & (multi ? 7 : 15)]}${col}`;
+});
+$('scr').addEventListener('click', e => {
+  const [x, y] = screenPos(e);
+  const cx = x >> 3, cy = y >> 3;
+  if (e.altKey) { sel = comp.screen[cy * 40 + cx]; view = comp.allocated.includes(sel) ? 'comp' : view; syncView(); return; }
+  const own = raster.own[y * 320 + x];
+  if (own >= 0) applyTool(own, e.shiftKey);
+});
+
+// ------------------------------------------------------------ charset interaction
+$('cs').addEventListener('click', e => {
+  const r = $('cs').getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 434 - 2, y = (e.clientY - r.top) / r.height * 434 - 2;
+  const i = Math.floor(y / 27) * 16 + Math.floor(x / 27);
+  if (i >= 0 && i < 256) { sel = i; drawCharset(); drawEditor(); }
+});
+let painting = null;
+function edPixel(e) {
+  const r = $('ed').getBoundingClientRect();
+  return [Math.floor((e.clientX - r.left) / r.width * (isMC(sel) ? 4 : 8)), Math.floor((e.clientY - r.top) / r.height * 8)];
+}
+$('ed').addEventListener('pointerdown', e => {
+  const [x, y] = edPixel(e);
+  if (x < 0 || y < 0 || y > 7) return;
+  // Hi-res toggles a pixel; multicolor paints the chosen value, or erases a pixel that already has it.
+  if (isMC(sel)) painting = ((base[sel][y] >> (6 - 2 * x)) & 3) === pen ? 0 : pen;
+  else painting = !(base[sel][y] & (0x80 >> x));
+  $('ed').setPointerCapture(e.pointerId);
+  setPx(x, y);
+});
+$('ed').addEventListener('pointermove', e => { if (painting !== null) { const [x, y] = edPixel(e); setPx(x, y); } });
+$('ed').addEventListener('pointerup', () => { if (painting !== null) { painting = null; rebuild(); } });
+function setPx(x, y) {
+  const g = base[sel];
+  if (isMC(sel)) {
+    if (x < 0 || y < 0 || x > 3 || y > 7) return;
+    g[y] = (g[y] & ~(3 << (6 - 2 * x))) | (painting << (6 - 2 * x));
+  } else {
+    if (x < 0 || y < 0 || x > 7 || y > 7) return;
+    if (painting) g[y] |= 0x80 >> x; else g[y] &= ~(0x80 >> x);
+  }
+  drawEditor(); drawCharset();
+}
+const rev = b => { let r = 0; for (let k = 0; k < 8; k++) if (b & (1 << k)) r |= 0x80 >> k; return r; };
+const revPairs = b => ((b & 3) << 6) | ((b & 12) << 2) | ((b & 48) >> 2) | ((b & 192) >> 6);
+document.querySelectorAll('[data-op]').forEach(b => b.onclick = () => {
+  const g = base[sel], op = b.dataset.op, s = isMC(sel) ? 2 : 1; // multicolor moves whole fat pixels
+  if (op === 'clear') g.fill(0);
+  if (op === 'invert') g.forEach((v, k) => g[k] = v ^ 0xff);
+  if (op === 'fliph') g.forEach((v, k) => g[k] = s === 2 ? revPairs(v) : rev(v));
+  if (op === 'flipv') g.reverse();
+  if (op === 'left') g.forEach((v, k) => g[k] = ((v << s) | (v >> (8 - s))) & 0xff);
+  if (op === 'right') g.forEach((v, k) => g[k] = ((v >> s) | (v << (8 - s))) & 0xff);
+  if (op === 'up') { const f = g[0]; g.copyWithin(0, 1); g[7] = f; }
+  if (op === 'down') { const l = g[7]; g.copyWithin(1, 0, 7); g[0] = l; }
+  if (op === 'copy') clip = Uint8Array.from(g);
+  if (op === 'paste' && clip) g.set(clip);
+  rebuild();
+});
+
+function syncView() {
+  $('vBase').classList.toggle('on', view === 'base'); $('vComp').classList.toggle('on', view === 'comp');
+  drawCharset(); drawEditor();
+}
+$('vBase').onclick = () => { view = 'base'; syncView(); };
+$('vComp').onclick = () => { view = 'comp'; syncView(); };
+$('resetCs').onclick = () => {
+  if (confirm(`Reset all 256 ${map.mode === 'mc' ? 'multicolor' : 'hi-res'} glyphs to the APEXSCII defaults?`)) {
+    base = D.glyphs.map(g => Uint8Array.from(g)); rebuild();
+  }
+};
+$('resetMap').onclick = () => {
+  if (confirm('Reset the map to the demo scene?')) {
+    map = Object.assign(APEX.defaultMap(), { mode: map.mode, mc1: map.mc1, mc2: map.mc2, persp: map.persp }); rebuild();
+  }
+};
+// Each perspective and mode keeps its own charset; switching swaps it in.
+function useCharset() { D = def(map.persp, map.mode); NAMES = D.names; base = loadCharset(map.persp, map.mode); sel = 0x40; }
+function setMode(mode) {
+  if (mode === map.mode) return;
+  map.mode = mode; useCharset(); rebuild();
+}
+function setPersp(persp) {
+  if (persp === map.persp) return;
+  map.persp = persp; useCharset(); rebuild();
+}
+$('mHires').onclick = () => setMode('hires');
+$('mMc').onclick = () => setMode('mc');
+$('imp').onclick = () => $('file').click();
+$('file').onchange = async () => {
+  const f = $('file').files[0]; if (!f) return;
+  let b = new Uint8Array(await f.arrayBuffer());
+  if (b.length === 2050) b = b.slice(2);
+  if (b.length < 2048) { alert('Expected a 2048-byte charset (or 2050 with a PRG load address).'); return; }
+  base = Array.from({ length: 256 }, (_, i) => b.slice(i * 8, i * 8 + 8));
+  rebuild();
+};
+
+$('caption').oninput = () => { map.caption = $('caption').value.toUpperCase().split('\n').slice(0, 3).join('\n'); rebuild(); };
+$('split').onchange = () => { map.split = $('split').checked; rebuild(); };
+$('romBtn').onclick = () => $('romFile').click();
+$('romFile').onchange = async () => {
+  const f = $('romFile').files[0]; if (!f) return;
+  const b = new Uint8Array(await f.arrayBuffer());
+  if (b.length !== 4096) { alert('Expected the 4096-byte C64 chargen ROM.'); return; }
+  rom = b.slice(0, 2048); // uppercase/graphics half, what $D018 = $14 shows
+  store.set('apexscii.rom', Array.from(rom, v => v.toString(16).padStart(2, '0')).join(''));
+  rebuild();
+};
+$('bg').onchange = () => { map.bg = +$('bg').value; rebuild(); };
+$('border').onchange = () => { map.border = +$('border').value; rebuild(); };
+$('tcol').onchange = () => { map.textColor = +$('tcol').value; rebuild(); };
+$('mc1').onchange = () => { map.mc1 = +$('mc1').value; rebuild(); };
+$('mc2').onchange = () => { map.mc2 = +$('mc2').value; rebuild(); };
+$('grid').onchange = drawScreen;
+
+function download(name, data) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const tag = () => (map.persp === 'iso' ? '' : '-' + map.persp) + (map.mode === 'mc' ? '-mc' : '');
+$('xDemo').onclick = () => download(`apexscii${tag()}-map.prg`, APEX.mapPrg(comp.chars, comp.screen, comp.color, map));
+$('xMapAsm').onclick = () => download(`apexscii${tag()}-map.asm`,
+  APEX.charsetAsm(comp.chars, comp.chars.map((_, i) => comp.allocated.includes(i) ? 'map composite' : NAMES[i])) + '\n' + APEX.mapAsm(comp.screen, comp.color));
+$('xBin').onclick = () => download(`apexscii${tag()}.bin`, APEX.flatten(base));
+$('xPrg').onclick = () => download(`apexscii${tag()}-charset.prg`, APEX.charsetPrg(base));
+$('xAsm').onclick = () => download(`apexscii${tag()}.asm`, APEX.charsetAsm(base, NAMES));
+
+// The art tool writes the same charset key; pick up its changes live.
+window.addEventListener('storage', e => {
+  if (e.key === APEX.charsetKey(map.persp, map.mode) && e.newValue) { base = loadCharset(map.persp, map.mode); rebuild(); }
+});
+
+rebuild();
+</script>
+</body>
+</html>

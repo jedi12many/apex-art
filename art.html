@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apex-art Tiles</title>
+<style>
+  :root {
+    --bg: #14122b; --panel: #1f1c42; --line: #3a3670; --ink: #e6e4ff; --dim: #9a96c8;
+    --accent: #9ad284; --warn: #e0a060;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-monospace, Consolas, monospace; }
+  header { padding: 12px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--accent); }
+  header a { color: var(--dim); }
+  main { display: grid; grid-template-columns: 300px minmax(0, 1fr) 300px; gap: 14px; padding: 14px; align-items: start; }
+  @media (max-width: 1200px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; margin-bottom: 14px; }
+  h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  button, select {
+    background: #2a2658; color: var(--ink); border: 1px solid var(--line); border-radius: 5px;
+    padding: 5px 9px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--dim); }
+  button.on { background: var(--accent); color: #102010; border-color: var(--accent); }
+  button kbd { opacity: .6; font-size: 11px; margin-left: 3px; }
+  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 3px; vertical-align: -1px; outline: 1px solid #555; }
+  canvas { image-rendering: pixelated; display: block; max-width: 100%; }
+  #cv { cursor: crosshair; touch-action: none; margin: 0 auto; background: #000; }
+  #stage { display: flex; justify-content: center; align-items: center; min-height: 540px; background: #0e0c22; border-radius: 6px; padding: 8px; }
+  #status { color: var(--dim); min-height: 1.4em; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cs { cursor: pointer; }
+  #pal { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  #pal button { height: 26px; padding: 0; border-width: 2px; }
+  #pal button.on { border-color: #fff; outline: 2px solid var(--accent); }
+  .lbl { color: var(--dim); font-size: 12px; }
+  .note { color: var(--dim); font-size: 12px; }
+  .warn { color: var(--warn); }
+  #tiles { display: flex; flex-direction: column; gap: 4px; max-height: 330px; overflow-y: auto; margin-bottom: 8px; }
+  .tile { display: flex; gap: 8px; align-items: center; padding: 4px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
+  .tile:hover { border-color: var(--line); }
+  .tile.on { border-color: var(--accent); background: #26234f; }
+  .tile canvas { background: #000; flex: none; max-width: 120px; height: auto; }
+  .tile small { color: var(--dim); display: block; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--warn); color: #201000;
+           padding: 8px 14px; border-radius: 6px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>APEX-ART TILES</h1>
+  <button id="tabTiles">Tiles</button><button id="tabChars">Characters</button>
+  <span class="lbl">View</span><select id="persp"></select>
+  <span class="lbl">Mode</span><button id="mHires">Hi-res</button><button id="mMc">Multicolor</button>
+  <span id="mcSel" class="lbl">BG <select id="bg"></select> MC1 <select id="mc1"></select> MC2 <select id="mc2"></select></span>
+  <span style="flex:1"></span>
+  <a href="index.html">Map editor →</a>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Character set</h2>
+      <canvas id="cs" width="434" height="434"></canvas>
+      <div id="selInfo" class="note" style="margin-top:6px"></div>
+      <div id="csStats" class="note"></div>
+    </section>
+    <section>
+      <h2 id="palTitle">Colour</h2>
+      <div id="pal"></div>
+      <div class="row" id="pens" style="margin-top:8px"></div>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <div class="row" id="tools"></div>
+      <div class="row">
+        <label><input type="checkbox" id="optSnap" checked> angle snap</label>
+        <label><input type="checkbox" id="optFill"> filled shapes</label>
+        <label><input type="checkbox" id="optPx" checked> pixel grid</label>
+        <label><input type="checkbox" id="optIso" checked> guides</label>
+        <label id="protectLbl"><input type="checkbox" id="optProtect" checked> protect shared glyphs</label>
+        <span style="flex:1"></span>
+        <button id="undo" title="Ctrl+Z">Undo</button><button id="redo" title="Ctrl+Y">Redo</button>
+      </div>
+      <div class="row">
+        <button data-op="fliph">Flip ↔</button><button data-op="flipv">Flip ↕</button>
+        <button data-op="left">←</button><button data-op="right">→</button><button data-op="up">↑</button><button data-op="down">↓</button>
+        <button data-op="invert">Invert</button><button data-op="clear">Clear</button>
+        <button data-op="copy">Copy</button><button data-op="paste">Paste</button>
+      </div>
+      <div id="stage"><canvas id="cv"></canvas></div>
+      <div id="status"></div>
+      <div id="hint" class="note"></div>
+    </section>
+  </div>
+
+  <div>
+    <section id="libSec">
+      <h2>Tiles</h2>
+      <div id="tiles"></div>
+      <div class="row">
+        <select id="newSize">
+          <option value="1x1">1×1 char</option><option value="2x2">2×2</option><option value="2x3">2×3 figure</option>
+          <option value="4x2">4×2 floor</option><option value="4x4" selected>4×4 cube</option><option value="4x6">4×6 tall block</option>
+          <option value="8x4">8×4 wide floor</option><option value="8x8">8×8</option>
+        </select>
+        <button id="tNew">New</button><button id="tDup">Duplicate</button><button id="tDel">Delete</button>
+      </div>
+      <div class="note">Double-click a tile to rename it.</div>
+    </section>
+    <section>
+      <h2>Preview</h2>
+      <div class="row"><button id="pvIso">Lattice</button><button id="pvGrid">Grid</button></div>
+      <canvas id="pv" width="268" height="200" style="background:#000"></canvas>
+    </section>
+    <section>
+      <h2>Export</h2>
+      <div class="row">
+        <button id="xBin">Charset .bin</button><button id="xPrg">Charset .prg</button><button id="xAsm">Charset .asm</button>
+        <button id="xTiles">Tiles .asm</button><button id="xPng">Tile sheet .png</button>
+      </div>
+      <div class="row">
+        <button id="xJson">Save project .json</button><button id="iJson">Open project…</button>
+        <input type="file" id="file" accept=".json" hidden>
+      </div>
+      <div class="note">The character set is shared with the map editor in this browser, so glyphs you draw here show up there too.</div>
+      <div class="row" style="margin-top:8px"><button id="resetAll">Reset tiles + charset</button></div>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="apexscii/apexscii.js"></script>
+<script src="apex-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const PAL = APEX.PALETTE;
+const PAL_RGB = PAL.map(h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16)));
+// Each perspective and mode has its own default charset, built on first use.
+const DEFS = {};
+const defs = () => DEFS[S.persp + S.mode] || (DEFS[S.persp + S.mode] = APEX.buildDefault(S.mode, S.persp));
+const freeFrom = () => defs().regions.find(r => r.name === 'free').from;
+const KEY = {
+  cs: m => APEX.charsetKey(S.persp, m), // shared with the map editor
+  tiles: m => S.persp === 'iso' ? 'apexscii.tiles.' + m : `apexscii.${S.persp}.tiles.${m}`,
+  art: 'apexscii.art',
+};
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+};
+const toHex = cs => cs.map(g => Array.from(g, b => b.toString(16).padStart(2, '0')).join('')).join('');
+const fromHex = s => Array.from({ length: 256 }, (_, i) => Uint8Array.from({ length: 8 }, (_, y) => parseInt(s.substr(i * 16 + y * 2, 2), 16)));
+const isZero = g => g.every(b => b === 0);
+const same = (a, b) => a.every((v, i) => v === b[i]);
+
+// ------------------------------------------------------------------ state
+let S = (() => {
+  try { const s = JSON.parse(store.get(KEY.art)); if (s && s.mode) return Object.assign({ persp: 'iso' }, s); } catch (e) {}
+  return { persp: 'iso', mode: 'hires', bg: 0, mc1: 12, mc2: 11, color: 1, pen: 3, tab: 'tiles', preview: 'iso' };
+})();
+let chars, tiles, cur = 0, sel = 0x40, tool = 'pencil', clip = null;
+let drag = null, work = null, ks = null, base0 = null, hover = null;
+const undoStack = [], redoStack = [];
+
+function loadMode() {
+  const cs = store.get(KEY.cs(S.mode));
+  chars = cs && cs.length === 4096 ? fromHex(cs) : defs().glyphs.map(g => Uint8Array.from(g));
+  let t = null;
+  try { t = JSON.parse(store.get(KEY.tiles(S.mode))); } catch (e) {}
+  if (!Array.isArray(t) || !t.length) { t = APEX.starterTiles(chars, S.mode, S.persp); tiles = t; save(); }
+  tiles = t;
+  cur = Math.min(cur, tiles.length - 1);
+}
+function save() {
+  store.set(KEY.cs(S.mode), toHex(chars));
+  store.set(KEY.tiles(S.mode), JSON.stringify(tiles));
+  store.set(KEY.art, JSON.stringify(S));
+}
+
+function snapshot() { return { chars: chars.map(g => g.slice()), tiles: JSON.stringify(tiles), cur, sel }; }
+function restore(s) { chars = s.chars; tiles = JSON.parse(s.tiles); cur = s.cur; sel = s.sel; save(); renderAll(); }
+function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0; }
+function undo() { if (undoStack.length) { redoStack.push(snapshot()); restore(undoStack.pop()); } }
+function redo() { if (redoStack.length) { undoStack.push(snapshot()); restore(redoStack.pop()); } }
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.style.display = 'none'; }, 2600);
+}
+
+// ------------------------------------------------------------------ surfaces
+// The canvas edits a "surface": the current tile, or (Characters tab) a single glyph edited in place.
+const mcProject = () => S.mode === 'mc';
+const cellIsMC = k => mcProject() && (k & 8) !== 0;
+// Colour RAM value for new ink: multicolor cells keep bit 3; hi-res cells in an MC project stay below 8.
+const inkK = mcCell => mcCell ? 8 | (S.color & 7) : mcProject() ? S.color & 7 : S.color;
+function glyphK() { return inkK(mcProject() && APEX.isMCSlot(sel, S.persp)); }
+function surf() {
+  if (S.tab === 'chars') return { w: 1, h: 1, cells: [{ c: sel, k: glyphK() }], glyph: true };
+  return tiles[cur];
+}
+const dims = s => [s.w * 8, s.h * 8];
+
+function toPixels(s) {
+  const [PW, PH] = dims(s), v = new Uint8Array(PW * PH);
+  s.cells.forEach((cell, ci) => {
+    const g = chars[cell.c], mc = cellIsMC(cell.k), ox = (ci % s.w) * 8, oy = ((ci / s.w) | 0) * 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++)
+      v[(oy + y) * PW + ox + x] = mc ? (g[y] >> (6 - 2 * (x >> 1))) & 3 : (g[y] >> (7 - x)) & 1;
+  });
+  return v;
+}
+function pack(s, vals, ci, mc) {
+  const [PW] = dims(s), ox = (ci % s.w) * 8, oy = ((ci / s.w) | 0) * 8, g = new Uint8Array(8);
+  for (let y = 0; y < 8; y++) {
+    if (mc) for (let fx = 0; fx < 4; fx++) g[y] |= (vals[(oy + y) * PW + ox + fx * 2] & 3) << (6 - 2 * fx);
+    else for (let x = 0; x < 8; x++) if (vals[(oy + y) * PW + ox + x]) g[y] |= 0x80 >> x;
+  }
+  return g;
+}
+
+// ------------------------------------------------------------------ glyph allocation
+function usage(code) {
+  let n = 0;
+  for (const t of tiles) for (const c of t.cells) if (c.c === code) n++;
+  return n;
+}
+function findGlyph(bytes) {
+  if (isZero(bytes)) return 0x20;
+  for (let i = 0x40; i < 256; i++) if (same(chars[i], bytes)) return i;
+  for (let i = 0; i < 0x40; i++) if (same(chars[i], bytes)) return i;
+  return -1;
+}
+function freeSlot() {
+  const order = [];
+  const f0 = freeFrom();
+  for (let i = f0; i < 256; i++) order.push(i);
+  for (let i = 0x40; i < f0; i++) order.push(i);
+  return order.find(i => isZero(chars[i]) && usage(i) === 0) ?? -1;
+}
+// A tile cell's pixels changed: reuse an identical glyph, else edit its private glyph, else claim a
+// blank slot. With "protect shared glyphs" off, the glyph is edited in place (every user changes).
+function resolve(t, ci, bytes) {
+  const cell = t.cells[ci];
+  const match = findGlyph(bytes);
+  if (match >= 0) { cell.c = match; return; }
+  if (cell.c !== 0x20 && (!$('optProtect').checked || (cell.c >= freeFrom() && usage(cell.c) === 1))) {
+    chars[cell.c] = bytes; return;
+  }
+  const slot = freeSlot();
+  if (slot < 0) { toast(`Character set is full — free some glyphs in ${APEX.hex(freeFrom())}-$FF.`); return; }
+  chars[slot] = bytes; cell.c = slot;
+}
+
+// Write the work buffer back: glyph surfaces edit chars[sel]; tiles resolve each changed cell.
+function commit() {
+  const s = surf();
+  s.cells.forEach((cell, ci) => {
+    const k = s.glyph ? cell.k : ks[ci], bytes = pack(s, work, ci, cellIsMC(k));
+    if (s.glyph) { chars[sel] = bytes; return; }
+    cell.k = k;
+    if (!same(bytes, chars[cell.c])) resolve(s, ci, bytes);
+  });
+  work = null; ks = null; base0 = null;
+  save(); renderAll();
+}
+
+// ------------------------------------------------------------------ pixel drawing
+function put(s, x, y, v) {
+  const [PW, PH] = dims(s);
+  if (x < 0 || y < 0 || x >= PW || y >= PH) return;
+  const ci = (y >> 3) * s.w + (x >> 3), k = s.glyph ? s.cells[0].k : ks[ci], mc = cellIsMC(k);
+  if (mc) { x &= ~1; work[y * PW + x] = work[y * PW + x + 1] = v; }
+  else work[y * PW + x] = v ? 1 : 0;
+  // Ink that uses the cell colour also sets it, like PETSCII editors do.
+  if (!s.glyph && v && (!mc || v === 3)) ks[ci] = inkK(mc);
+}
+function bresenham(x0, y0, x1, y1) {
+  const pts = [], dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    pts.push([x0, y0]);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+  return pts;
+}
+// Angle snap: horizontal, vertical, or a clean staircase along the view's slope — 2:1 in the
+// isometric view (two pixels across per row), 45° in the others.
+function snapLine(x0, y0, x1, y1) {
+  const r = S.persp === 'iso' ? 2 : 1, a = Math.atan(1 / r) * 180 / Math.PI;
+  const dx = x1 - x0, dy = y1 - y0, ang = Math.atan2(dy, dx) * 180 / Math.PI;
+  const dirs = [0, a, 90, 180 - a, 180, a - 180, -90, -a];
+  const best = dirs.reduce((p, d) => Math.abs(((ang - d + 540) % 360) - 180) < Math.abs(((ang - p + 540) % 360) - 180) ? d : p);
+  if (best === 0 || best === 180) return bresenham(x0, y0, x1, y0);
+  if (Math.abs(best) === 90) return bresenham(x0, y0, x0, y1);
+  const sx = Math.abs(best) < 90 ? 1 : -1, sy = best > 0 ? 1 : -1;
+  const n = Math.round((r * Math.abs(dx) + Math.abs(dy)) / (r * r + 1)), pts = [];
+  for (let k = 0; k <= n; k++) for (let j = 0; j < r; j++) pts.push([x0 + sx * (r * k + j), y0 + sy * k]);
+  return pts;
+}
+function rectPts(x0, y0, x1, y1, filled) {
+  const pts = [], [ax, bx] = [Math.min(x0, x1), Math.max(x0, x1)], [ay, by] = [Math.min(y0, y1), Math.max(y0, y1)];
+  for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++)
+    if (filled || y === ay || y === by || x === ax || x === bx) pts.push([x, y]);
+  return pts;
+}
+// Diamond using the same staircase as the slope glyphs: 2:1 in the isometric view (width snaps to
+// multiples of 4), 45° in the others.
+function diamondPts(x0, y0, x1, filled) {
+  const iso = S.persp === 'iso', q = iso ? 4 : 2;
+  const w = Math.max(q, Math.round(Math.abs(x1 - x0) / q) * q), h = iso ? w / 2 : w, left = x1 < x0 ? x0 - w : x0, pts = [];
+  for (let px = 0; px < w; px++) {
+    const l = px < w / 2 ? px : w - 1 - px, step = iso ? l >> 1 : l, top = h / 2 - 1 - step, bot = h / 2 + step;
+    for (let py = top; py < bot; py++) if (filled || py === top || py === bot - 1) pts.push([left + px, y0 + py]);
+  }
+  return pts;
+}
+function flood(s, x, y, v) {
+  const [PW, PH] = dims(s), target = work[y * PW + x];
+  if (target === (v & 3)) return;
+  const stack = [[x, y]], seen = new Uint8Array(PW * PH);
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= PW || cy >= PH) continue;
+    const i = cy * PW + cx;
+    if (seen[i] || work[i] !== target) continue;
+    seen[i] = 1;
+    put(s, cx, cy, v);
+    stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+}
+
+// ------------------------------------------------------------------ tools
+const TOOLS = [
+  ['pencil', 'Pencil', 'B'], ['line', 'Line', 'L'], ['rect', 'Rect', 'R'], ['diamond', 'Diamond', 'D'],
+  ['fill', 'Fill', 'F'], ['stamp', 'Stamp char', 'S'], ['pick', 'Pick', 'I'], ['paint', 'Cell colour', 'C'],
+];
+const CELL_TOOLS = new Set(['stamp', 'pick', 'paint']);
+const penValue = erase => erase ? 0 : mcProject() ? S.pen : 1;
+
+function canvasPos(e) {
+  const s = surf(), [PW, PH] = dims(s), r = $('cv').getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * PW), y = Math.floor((e.clientY - r.top) / r.height * PH);
+  return x >= 0 && y >= 0 && x < PW && y < PH ? [x, y] : null;
+}
+function cellTool(p, erase) {
+  const s = surf();
+  if (s.glyph) { if (tool === 'pick') { /* nothing to pick inside one glyph */ } return; }
+  const ci = (p[1] >> 3) * s.w + (p[0] >> 3), cell = s.cells[ci];
+  if (tool === 'pick') { sel = cell.c; S.color = cellIsMC(cell.k) ? cell.k & 7 : cell.k; renderAll(); return; }
+  if (tool === 'stamp') {
+    const c = erase ? 0x20 : sel;
+    cell.c = c; cell.k = inkK(mcProject() && APEX.isMCSlot(c, S.persp));
+  }
+  if (tool === 'paint') cell.k = inkK(cellIsMC(cell.k));
+  save(); renderAll();
+}
+
+const cv = $('cv');
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  const p = canvasPos(e); if (!p) return;
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  const erase = e.button === 2;
+  if (tool === 'pick') { cellTool(p, erase); return; }
+  pushUndo();
+  if (CELL_TOOLS.has(tool)) { drag = { cell: true, erase }; cellTool(p, erase); return; }
+  const s = surf();
+  base0 = toPixels(s); work = base0.slice(); ks = s.cells.map(c => c.k);
+  const v = penValue(erase);
+  if (tool === 'fill') { flood(s, p[0], p[1], v); commit(); return; }
+  drag = { start: p, last: p, v, ks0: ks.slice() };
+  if (tool === 'pencil') put(s, p[0], p[1], v);
+  else shape(s, p);
+  drawCanvas();
+});
+cv.addEventListener('pointermove', e => {
+  const p = canvasPos(e);
+  hover = p; showStatus(p);
+  if (!drag || !p) { drawCanvas(); return; }
+  const s = surf();
+  if (drag.cell) { cellTool(p, drag.erase); return; }
+  if (tool === 'pencil') { for (const [x, y] of bresenham(drag.last[0], drag.last[1], p[0], p[1])) put(s, x, y, drag.v); drag.last = p; }
+  else shape(s, p);
+  drawCanvas();
+});
+cv.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const wasCell = drag.cell;
+  drag = null;
+  if (!wasCell) commit();
+});
+cv.addEventListener('pointerleave', () => { hover = null; drawCanvas(); });
+
+// Shapes redraw from the stroke's starting pixels every move, so they rubber-band.
+function shape(s, p) {
+  work = base0.slice(); ks = drag.ks0.slice();
+  const [x0, y0] = drag.start, filled = $('optFill').checked;
+  let pts;
+  if (tool === 'line') pts = $('optSnap').checked ? snapLine(x0, y0, p[0], p[1]) : bresenham(x0, y0, p[0], p[1]);
+  else if (tool === 'rect') pts = rectPts(x0, y0, p[0], p[1], filled);
+  else pts = diamondPts(x0, y0, p[0], filled);
+  for (const [x, y] of pts) put(s, x, y, drag.v);
+}
+
+// Whole-surface operations work on pixels, then resolve like a stroke.
+document.querySelectorAll('[data-op]').forEach(b => b.onclick = () => {
+  const s = surf(), op = b.dataset.op, [PW, PH] = dims(s);
+  if (op === 'copy') { clip = { w: s.w, h: s.h, cells: s.glyph ? null : JSON.parse(JSON.stringify(s.cells)), px: toPixels(s) }; toast('Copied'); return; }
+  pushUndo();
+  base0 = toPixels(s); ks = s.cells.map(c => c.k);
+  const src = base0, out = new Uint8Array(src.length);
+  const step = mcProject() ? 2 : 1; // multicolor moves whole fat pixels
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    let sx = x, sy = y;
+    if (op === 'fliph') sx = PW - 1 - x;
+    if (op === 'flipv') sy = PH - 1 - y;
+    if (op === 'left') sx = (x + step) % PW;
+    if (op === 'right') sx = (x - step + PW) % PW;
+    if (op === 'up') sy = (y + 1) % PH;
+    if (op === 'down') sy = (y - 1 + PH) % PH;
+    out[y * PW + x] = src[sy * PW + sx];
+  }
+  if (op === 'fliph' && mcProject()) for (let i = 0; i < out.length; i += 2) [out[i], out[i + 1]] = [out[i + 1], out[i]];
+  if (op === 'fliph' || op === 'flipv') { // cell colours travel with their pixels
+    const k0 = ks.slice();
+    for (let cy = 0; cy < s.h; cy++) for (let cx = 0; cx < s.w; cx++)
+      ks[cy * s.w + cx] = k0[(op === 'flipv' ? s.h - 1 - cy : cy) * s.w + (op === 'fliph' ? s.w - 1 - cx : cx)];
+  }
+  if (op === 'invert') for (let i = 0; i < out.length; i++) out[i] = src[i] ^ (cellIsMC(ks[((i / PW >> 3) | 0) * s.w + ((i % PW) >> 3)]) ? 3 : 1);
+  if (op === 'clear') out.fill(0);
+  if (op === 'paste') {
+    if (!clip) { undoStack.pop(); toast('Nothing copied yet'); return; }
+    if (!s.glyph && clip.cells && clip.w === s.w && clip.h === s.h) { s.cells = JSON.parse(JSON.stringify(clip.cells)); save(); renderAll(); return; }
+    out.fill(0);
+    const cw = clip.w * 8;
+    for (let y = 0; y < Math.min(PH, clip.h * 8); y++) for (let x = 0; x < Math.min(PW, cw); x++) out[y * PW + x] = clip.px[y * cw + x];
+  }
+  work = out; commit();
+});
+
+// ------------------------------------------------------------------ rendering
+function cellRGB(k, v) {
+  if (cellIsMC(k)) return v ? PAL_RGB[[S.bg, S.mc1, S.mc2, k & 7][v]] : null;
+  return v ? PAL_RGB[k & 15] : null;
+}
+// Render a tile (or the work buffer) to RGBA; transparent where a pixel shows the background.
+function tileRGBA(s, vals, kk) {
+  const [PW, PH] = dims(s), out = new Uint8ClampedArray(PW * PH * 4), v = vals || toPixels(s);
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    const ci = (y >> 3) * s.w + (x >> 3), k = kk ? kk[ci] : s.cells[ci].k, c = cellRGB(k, v[y * PW + x]), p = (y * PW + x) * 4;
+    if (c) { out[p] = c[0]; out[p + 1] = c[1]; out[p + 2] = c[2]; out[p + 3] = 255; }
+  }
+  return out;
+}
+function paintRGBA(ctx, rgba, w, h, ox, oy, scale, withBg) {
+  const img = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height), d = img.data, bg = PAL_RGB[S.bg];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = (y * w + x) * 4, has = rgba[p + 3];
+    if (!has && !withBg) continue;
+    const c = has ? [rgba[p], rgba[p + 1], rgba[p + 2]] : bg;
+    for (let sy = 0; sy < scale; sy++) for (let sx = 0; sx < scale; sx++) {
+      const X = ox + x * scale + sx, Y = oy + y * scale + sy;
+      if (X < 0 || Y < 0 || X >= img.width || Y >= img.height) continue;
+      const q = (Y * img.width + X) * 4;
+      d[q] = c[0]; d[q + 1] = c[1]; d[q + 2] = c[2]; d[q + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function zoom(s) { const [PW, PH] = dims(s); return Math.max(2, Math.floor(Math.min(520 / PW, 520 / PH))); }
+function drawCanvas() {
+  const s = surf(), [PW, PH] = dims(s), z = zoom(s), ctx = cv.getContext('2d');
+  if (cv.width !== PW * z || cv.height !== PH * z) { cv.width = PW * z; cv.height = PH * z; }
+  ctx.fillStyle = PAL[S.bg]; ctx.fillRect(0, 0, cv.width, cv.height);
+  const kk = s.glyph ? null : (ks || null);
+  paintRGBA(ctx, tileRGBA(s, work, kk), PW, PH, 0, 0, z, true);
+  const line = (x0, y0, x1, y1) => { ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); };
+  if ($('optPx').checked && z >= 6) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let cy = 0; cy < s.h; cy++) for (let cx = 0; cx < s.w; cx++) {
+      const step = cellIsMC(kk ? kk[cy * s.w + cx] : s.cells[cy * s.w + cx].k) ? 2 : 1;
+      for (let x = step; x < 8; x += step) line((cx * 8 + x) * z + .5, cy * 8 * z, (cx * 8 + x) * z + .5, (cy + 1) * 8 * z);
+    }
+    for (let y = 1; y < PH; y++) if (y % 8) line(0, y * z + .5, PW * z, y * z + .5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.32)'; ctx.beginPath();
+  for (let x = 0; x <= PW; x += 8) line(x * z + .5, 0, x * z + .5, PH * z);
+  for (let y = 0; y <= PH; y += 8) line(0, y * z + .5, PW * z, y * z + .5);
+  ctx.stroke();
+  // Guide lines along the view's slopes, through char corners: 2:1 for iso, 45° for the others.
+  const guide = { iso: [16, 0.5], military: [16, 1], side: [8, 1], dungeon: [8, 1] }[S.persp];
+  if ($('optIso').checked && !s.glyph && guide) {
+    const [step, m] = guide;
+    ctx.save(); ctx.strokeStyle = 'rgba(154,210,132,0.45)'; ctx.setLineDash([4, 4]); ctx.beginPath();
+    for (let c = -PW; c <= PH + PW; c += step) { line(0, c * z, PW * z, (c + PW * m) * z); line(0, c * z, PW * z, (c - PW * m) * z); }
+    ctx.stroke(); ctx.restore();
+  }
+  if (hover && !drag && hover[0] < PW && hover[1] < PH) { // hover can be stale after switching surfaces
+    ctx.strokeStyle = '#9ad284'; ctx.lineWidth = 2;
+    const [x, y] = hover;
+    if (CELL_TOOLS.has(tool)) ctx.strokeRect((x & ~7) * z + 1, (y & ~7) * z + 1, 8 * z - 2, 8 * z - 2);
+    else {
+      const ci = (y >> 3) * s.w + (x >> 3), wide = cellIsMC(kk ? kk[ci] : s.cells[ci].k);
+      ctx.strokeRect((wide ? x & ~1 : x) * z + 1, y * z + 1, (wide ? 2 : 1) * z - 2, z - 2);
+    }
+    ctx.lineWidth = 1;
+  }
+}
+
+function showStatus(p) {
+  if (!p) { $('status').textContent = ''; return; }
+  const s = surf(), ci = (p[1] >> 3) * s.w + (p[0] >> 3), cell = s.cells[ci];
+  const mc = cellIsMC(cell.k);
+  $('status').textContent = `x ${mc ? (p[0] >> 1) + ' (fat)' : p[0]}, y ${p[1]} · cell ${p[0] >> 3},${p[1] >> 3} · ${APEX.hex(cell.c)} ` +
+    `${glyphName(cell.c)} · ${mc ? 'MC ' : ''}${APEX.COLOR_NAMES[mc ? cell.k & 7 : cell.k & 15]}`;
+}
+function glyphName(i) {
+  const d = defs();
+  if (same(chars[i], d.glyphs[i])) return d.names[i];
+  return i >= freeFrom() ? 'tile glyph' : d.names[i] + ' (edited)';
+}
+
+function drawCharset() {
+  const ctx = $('cs').getContext('2d'), Z = 27, used = new Set(S.tab === 'tiles' && tiles[cur] ? tiles[cur].cells.map(c => c.c) : []);
+  ctx.fillStyle = '#0e0c22'; ctx.fillRect(0, 0, 434, 434);
+  const mcCols = [S.bg, S.mc1, S.mc2, S.color & 7];
+  for (let i = 0; i < 256; i++) {
+    const ox = 2 + (i % 16) * Z, oy = 2 + ((i / 16) | 0) * Z, g = chars[i];
+    ctx.fillStyle = i >= freeFrom() ? '#1a1838' : i < 0x40 ? '#2b2860' : '#232050';
+    ctx.fillRect(ox, oy, 25, 25);
+    if (mcProject() && APEX.isMCSlot(i, S.persp)) {
+      for (let y = 0; y < 8; y++) for (let fx = 0; fx < 4; fx++) {
+        const v = (g[y] >> (6 - 2 * fx)) & 3;
+        if (v) { ctx.fillStyle = PAL[mcCols[v]]; ctx.fillRect(ox + 1 + fx * 6, oy + 1 + y * 3, 6, 3); }
+      }
+    } else {
+      ctx.fillStyle = '#e6e4ff';
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (g[y] & (0x80 >> x)) ctx.fillRect(ox + 1 + x * 3, oy + 1 + y * 3, 3, 3);
+    }
+    if (used.has(i)) { ctx.fillStyle = '#9ad284'; ctx.fillRect(ox + 21, oy + 21, 4, 4); }
+    if (i === sel) { ctx.strokeStyle = '#9ad284'; ctx.lineWidth = 2; ctx.strokeRect(ox - 1, oy - 1, 27, 27); }
+  }
+  $('selInfo').textContent = `Selected ${APEX.hex(sel)} · ${glyphName(sel)}`;
+  let free = 0;
+  for (let i = 0x40; i < 256; i++) if (isZero(chars[i]) && usage(i) === 0) free++;
+  $('csStats').textContent = `${free} blank slots left · green dot = used by this tile`;
+}
+
+function drawPalette() {
+  const mc = mcProject(), n = mc ? 8 : 16;
+  $('palTitle').textContent = mc ? 'Cell colour (11 pixels)' : 'Cell colour';
+  $('pal').innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('button');
+    b.style.background = PAL[i]; b.title = `${i} ${APEX.COLOR_NAMES[i]}`;
+    if ((mc ? S.color & 7 : S.color) === i) b.classList.add('on');
+    b.onclick = () => { S.color = i; save(); drawPalette(); drawCharset(); drawPreview(); };
+    $('pal').appendChild(b);
+  }
+  $('pens').style.display = mc ? '' : 'none';
+  if (mc) {
+    const labels = ['00 bg', '01 MC1', '10 MC2', '11 cell'], cols = [S.bg, S.mc1, S.mc2, S.color & 7];
+    $('pens').innerHTML = '<span class="lbl">Pen</span>' + labels.map((l, v) =>
+      `<button data-pen="${v}" class="${S.pen === v ? 'on' : ''}"><span class="sw" style="background:${PAL[cols[v]]}"></span>${l}</button>`).join('');
+    $('pens').querySelectorAll('[data-pen]').forEach(b => b.onclick = () => { S.pen = +b.dataset.pen; save(); drawPalette(); });
+  }
+}
+
+function drawTools() {
+  $('tools').innerHTML = '';
+  TOOLS.forEach(([id, label, key]) => {
+    if (S.tab === 'chars' && CELL_TOOLS.has(id)) return;
+    const b = document.createElement('button');
+    b.innerHTML = `${label}<kbd>${key}</kbd>`;
+    if (id === tool) b.classList.add('on');
+    b.onclick = () => { tool = id; drawTools(); drawCanvas(); };
+    $('tools').appendChild(b);
+  });
+}
+
+function drawTiles() {
+  const el = $('tiles'); el.innerHTML = '';
+  tiles.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'tile' + (i === cur && S.tab === 'tiles' ? ' on' : '');
+    const c = document.createElement('canvas'), z = t.w * 8 > 32 || t.h * 8 > 48 ? 1 : 2;
+    c.width = t.w * 8 * z; c.height = t.h * 8 * z;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = PAL[S.bg]; ctx.fillRect(0, 0, c.width, c.height);
+    paintRGBA(ctx, tileRGBA(t), t.w * 8, t.h * 8, 0, 0, z, false);
+    const info = document.createElement('div');
+    info.innerHTML = `${escapeHtml(t.name)}<small>${t.w}×${t.h} chars</small>`;
+    row.append(c, info);
+    row.onclick = () => { cur = i; S.tab = 'tiles'; renderAll(); };
+    row.ondblclick = () => {
+      const n = prompt('Tile name', t.name);
+      if (n) { pushUndo(); t.name = n.slice(0, 40); save(); renderAll(); }
+    };
+    el.appendChild(row);
+  });
+}
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Where n x n copies of a tile go in each view's lattice, listed back to front.
+function lattice(kind, PW, PH, n) {
+  const pos = [];
+  if (kind === 'iso' || kind === 'military') { // diamonds: iso steps a quarter of the width down, military half
+    const sy = kind === 'iso' ? PW / 4 : PW / 2;
+    for (let sum = 0; sum <= 2 * n - 2; sum++) for (let i = 0; i < n; i++) {
+      const j = sum - i;
+      if (j >= 0 && j < n) pos.push([(i - j + n - 1) * PW / 2, (i + j) * sy]);
+    }
+  } else if (kind === 'side') { // blocks recede up-right 8px per row; the front face is the tile minus its side
+    for (let j = n - 1; j >= 0; j--) for (let i = 0; i < n; i++) pos.push([i * (PW - 8) + j * 8, (n - 1 - j) * 8]);
+  } else if (kind === 'oblique') { // rows step one top face down; a front face is covered by the row in front
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pos.push([i * PW, j * Math.min(PW, PH)]);
+  } else for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pos.push([i * PW, j * PH]);
+  return pos;
+}
+
+function drawPreview() {
+  const s = surf(), [PW, PH] = dims(s), ctx = $('pv').getContext('2d'), rgba = tileRGBA(s, work, s.glyph ? null : ks);
+  ctx.fillStyle = PAL[S.bg]; ctx.fillRect(0, 0, 268, 200);
+  const pos = lattice(S.preview === 'iso' && !s.glyph ? S.persp : 'grid', PW, PH, 3);
+  const W = Math.max(...pos.map(p => p[0])) + PW, H = Math.max(...pos.map(p => p[1])) + PH;
+  const z = Math.max(1, Math.floor(Math.min(268 / W, 200 / H))), ox = Math.floor((268 - W * z) / 2), oy = Math.floor((200 - H * z) / 2);
+  for (const [x, y] of pos) paintRGBA(ctx, rgba, PW, PH, ox + x * z, oy + y * z, z, false);
+  $('pvIso').classList.toggle('on', S.preview === 'iso'); $('pvGrid').classList.toggle('on', S.preview !== 'iso');
+}
+
+function drawHeader() {
+  $('tabTiles').classList.toggle('on', S.tab === 'tiles'); $('tabChars').classList.toggle('on', S.tab === 'chars');
+  $('persp').value = S.persp;
+  $('mHires').classList.toggle('on', S.mode === 'hires'); $('mMc').classList.toggle('on', S.mode === 'mc');
+  $('mcSel').style.display = mcProject() ? '' : 'none';
+  for (const id of ['bg', 'mc1', 'mc2']) $(id).value = S[id];
+  $('libSec').style.opacity = S.tab === 'tiles' ? 1 : .6;
+  $('protectLbl').style.display = S.tab === 'tiles' ? '' : 'none';
+  $('hint').innerHTML = S.tab === 'chars'
+    ? `Editing glyph <b>${APEX.hex(sel)}</b> in place — every tile and map cell that uses it changes. Pick another glyph from the character set.`
+    : `Left button draws, right button erases. Changed cells reuse identical glyphs or claim blank slots (${APEX.hex(freeFrom())}+), so shared glyphs stay intact.`;
+}
+
+function renderAll() {
+  if (CELL_TOOLS.has(tool) && S.tab === 'chars') tool = 'pencil';
+  drawHeader(); drawTools(); drawPalette(); drawCharset(); drawTiles(); drawCanvas(); drawPreview();
+}
+
+// ------------------------------------------------------------------ controls
+for (const id of ['bg', 'mc1', 'mc2']) {
+  $(id).innerHTML = APEX.COLOR_NAMES.map((n, i) => `<option value="${i}">${i} ${n}</option>`).join('');
+  $(id).onchange = () => { S[id] = +$(id).value; save(); renderAll(); };
+}
+$('tabTiles').onclick = () => { S.tab = 'tiles'; save(); renderAll(); };
+$('tabChars').onclick = () => { S.tab = 'chars'; save(); renderAll(); };
+function setMode(m) {
+  if (m === S.mode) return;
+  S.mode = m; cur = 0; undoStack.length = redoStack.length = 0;
+  loadMode(); save(); renderAll();
+}
+function setPersp(p) {
+  if (p === S.persp) return;
+  S.persp = p; cur = 0; sel = 0x40; undoStack.length = redoStack.length = 0;
+  loadMode(); save(); renderAll();
+}
+$('persp').innerHTML = Object.keys(APEX.PERSPECTIVES).map(p => `<option value="${p}">${APEX.PERSPECTIVES[p].name}</option>`).join('');
+$('persp').onchange = () => setPersp($('persp').value);
+$('mHires').onclick = () => setMode('hires');
+$('mMc').onclick = () => setMode('mc');
+$('cs').addEventListener('click', e => {
+  const r = $('cs').getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 434 - 2, y = (e.clientY - r.top) / r.height * 434 - 2;
+  const i = Math.floor(y / 27) * 16 + Math.floor(x / 27);
+  if (i < 0 || i > 255) return;
+  sel = i;
+  if (S.tab === 'tiles' && !CELL_TOOLS.has(tool)) tool = 'stamp';
+  renderAll();
+});
+['optPx', 'optIso'].forEach(id => $(id).onchange = drawCanvas);
+$('undo').onclick = undo; $('redo').onclick = redo;
+$('pvIso').onclick = () => { S.preview = 'iso'; save(); drawPreview(); };
+$('pvGrid').onclick = () => { S.preview = 'grid'; save(); drawPreview(); };
+
+$('tNew').onclick = () => {
+  pushUndo();
+  const [w, h] = $('newSize').value.split('x').map(Number);
+  const k = mcProject() ? 8 | (S.color & 7) : S.color;
+  tiles.push({ name: 'Tile ' + (tiles.length + 1), w, h, cells: Array.from({ length: w * h }, () => ({ c: 0x20, k })) });
+  cur = tiles.length - 1; S.tab = 'tiles'; save(); renderAll();
+};
+$('tDup').onclick = () => {
+  pushUndo();
+  const t = JSON.parse(JSON.stringify(tiles[cur])); t.name += ' copy';
+  tiles.splice(cur + 1, 0, t); cur++; save(); renderAll();
+};
+$('tDel').onclick = () => {
+  if (tiles.length <= 1) { toast('Keep at least one tile'); return; }
+  pushUndo(); tiles.splice(cur, 1); cur = Math.max(0, cur - 1); save(); renderAll();
+};
+$('resetAll').onclick = () => {
+  if (!confirm(`Reset the ${S.mode === 'mc' ? 'multicolor' : 'hi-res'} character set and tiles to the defaults? This also resets the map editor's character set.`)) return;
+  pushUndo();
+  chars = defs().glyphs.map(g => Uint8Array.from(g));
+  tiles = APEX.starterTiles(chars, S.mode, S.persp); cur = 0; save(); renderAll();
+};
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = TOOLS.find(t => t[2].toLowerCase() === k && !(S.tab === 'chars' && CELL_TOOLS.has(t[0])));
+  if (t) { tool = t[0]; drawTools(); drawCanvas(); }
+  if (k === '[' || k === ']') { sel = (sel + (k === ']' ? 1 : 255)) & 255; renderAll(); }
+  if (k === 'g') { $('optIso').checked = !$('optIso').checked; drawCanvas(); }
+});
+
+// ------------------------------------------------------------------ export / import
+function download(name, data, type = 'application/octet-stream') {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const tag = () => (S.persp === 'iso' ? '' : '-' + S.persp) + (mcProject() ? '-mc' : '');
+$('xBin').onclick = () => download(`apexscii${tag()}.bin`, APEX.flatten(chars));
+$('xPrg').onclick = () => download(`apexscii${tag()}-charset.prg`, APEX.charsetPrg(chars));
+$('xAsm').onclick = () => download(`apexscii${tag()}.asm`, APEX.charsetAsm(chars, chars.map((_, i) => glyphName(i))));
+$('xTiles').onclick = () => download(`apexscii${tag()}-tiles.asm`, APEX.tilesAsm(tiles));
+$('xPng').onclick = () => {
+  const gap = 8, W = tiles.reduce((a, t) => a + t.w * 8 + gap, gap), H = Math.max(...tiles.map(t => t.h * 8)) + 2 * gap;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d'); ctx.fillStyle = PAL[S.bg]; ctx.fillRect(0, 0, W, H);
+  let x = gap;
+  for (const t of tiles) { paintRGBA(ctx, tileRGBA(t), t.w * 8, t.h * 8, x, gap, 1, false); x += t.w * 8 + gap; }
+  c.toBlob(b => download(`apexscii${tag()}-tiles.png`, b));
+};
+$('xJson').onclick = () => download(`apexscii${tag()}-project.json`, JSON.stringify({
+  format: 'apexscii-art', version: 1, persp: S.persp, mode: S.mode, bg: S.bg, mc1: S.mc1, mc2: S.mc2, charset: toHex(chars), tiles,
+}, null, 1), 'application/json');
+$('iJson').onclick = () => $('file').click();
+$('file').onchange = async () => {
+  const f = $('file').files[0]; if (!f) return;
+  try {
+    const p = JSON.parse(await f.text());
+    if (p.format !== 'apexscii-art' || !Array.isArray(p.tiles) || typeof p.charset !== 'string' || p.charset.length !== 4096) throw new Error('not an APEXSCII art project');
+    pushUndo();
+    Object.assign(S, { persp: APEX.PERSPECTIVES[p.persp] ? p.persp : 'iso', mode: p.mode === 'mc' ? 'mc' : 'hires', bg: p.bg | 0, mc1: p.mc1 | 0, mc2: p.mc2 | 0 });
+    chars = fromHex(p.charset); tiles = p.tiles; cur = 0;
+    save(); renderAll();
+  } catch (err) { toast('Could not open: ' + err.message); }
+  $('file').value = '';
+};
+
+// The map editor writes the same charset key; pick up its changes live.
+window.addEventListener('storage', e => {
+  if (e.key === KEY.cs(S.mode) && e.newValue && e.newValue.length === 4096) { chars = fromHex(e.newValue); renderAll(); }
+});
+
+loadMode();
+renderAll();
+</script>
+</body>
+</html>
