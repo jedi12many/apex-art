@@ -475,8 +475,9 @@
   const statusRows = map => Math.max(1, statusLines(map).length);
 
   // ------------------------------------------------- screens and exports
-  // A map's status bar is drawn in the ROM font (via the raster split) unless the split is off.
-  const romRows = map => (map.split !== false ? statusRows(map) : 0);
+  // A map's status bar is drawn in the ROM font (via the raster split) unless the split is off;
+  // screens that aren't maps can say how many ROM rows they have with romRows.
+  const romRows = map => (map.romRows !== undefined ? map.romRows : map.split !== false ? statusRows(map) : 0);
   const screenRGB = (chars, screen, color, map, rom) => APEXSCII.screenRGB(chars, screen, color, { ...map, romRows: romRows(map) }, rom);
   const mapPrg = (chars, screen, color, map) => APEXSCII.screenPrg(chars, screen, color, { ...map, romRows: romRows(map) });
 
@@ -489,8 +490,87 @@
   }
 
 
+  // ---------------------------------------------------------- hardware sprites
+  // Sprites float over the character screen: their own colours, and no character slots used.
+  // A sprite set is { mc1, mc2, frames: [Uint8Array(64)], list: [{ frame, x, y, color, mc, xx, yy }] },
+  // with x/y in display pixels (0,0 = top-left of the 320x200 screen); sprite 0 is drawn on top.
+  // Multicolor art is 12 columns x 21 rows of '.', 'a' (01 = $D025), 'b' (10 = the sprite's colour)
+  // and 'c' (11 = $D026); hi-res art is 24 columns of '.' and '#'. Larger art is cut into frames,
+  // left to right then top to bottom.
+  function spriteFrames(art, mc) {
+    const w = mc ? 12 : 24, cols = art[0].length / w, rows = art.length / 21;
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || art.some(r => r.length !== art[0].length)) {
+      throw new Error('sprite art must be a whole number of sprites');
+    }
+    const frames = [];
+    for (let sr = 0; sr < rows; sr++) for (let sc = 0; sc < cols; sc++) {
+      const f = new Uint8Array(64);
+      for (let y = 0; y < 21; y++) for (let x = 0; x < w; x++) {
+        const ch = art[sr * 21 + y][sc * w + x], v = mc ? '.abc'.indexOf(ch) : '.#'.indexOf(ch);
+        if (v < 0) throw new Error(`bad sprite pixel "${ch}"`);
+        if (mc) f[y * 3 + (x >> 2)] |= v << (6 - 2 * (x & 3));
+        else if (v) f[y * 3 + (x >> 3)] |= 0x80 >> (x & 7);
+      }
+      frames.push(f);
+    }
+    return frames;
+  }
+
+  // Draw sprites over a 320x200 RGBA screen (from screenRGB) the way the VIC does.
+  function overlaySprites(rgba, sprites) {
+    const pal = APEXSCII.PALETTE.map(h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16)));
+    for (let i = sprites.list.length - 1; i >= 0; i--) {
+      const s = sprites.list[i], f = sprites.frames[s.frame], sx = s.xx ? 2 : 1, sy = s.yy ? 2 : 1;
+      for (let y = 0; y < 21; y++) for (let x = 0; x < 24; x++) {
+        const byte = f[y * 3 + (x >> 3)];
+        const c = s.mc ? [-1, sprites.mc1, s.color, sprites.mc2][(byte >> (6 - 2 * ((x & 7) >> 1))) & 3]
+                       : (byte >> (7 - (x & 7))) & 1 ? s.color : -1;
+        if (c < 0) continue;
+        for (let dy = 0; dy < sy; dy++) for (let dx = 0; dx < sx; dx++) {
+          const X = s.x + x * sx + dx, Y = s.y + y * sy + dy;
+          if (X >= 0 && Y >= 0 && X < 320 && Y < 200) rgba.set(pal[c], (Y * 320 + X) * 4);
+        }
+      }
+    }
+    return rgba;
+  }
+
+  // A runnable PRG with sprites: APEXSCII's screen program, plus the sprite frames at $2000 (pointers
+  // $80 up, stored at $07F8 with the screen) and a set-up routine after them that BASIC's SYS runs
+  // first; it programs the VIC's sprite registers and then jumps into the screen program at $0810.
+  function spritePrg(chars, screen, color, opts, sprites) {
+    const DATA = 0x2000, n = sprites.list.length;
+    if (n > 8) throw new Error('the VIC has only 8 sprites');
+    const scr = new Uint8Array(1024);
+    scr.set(screen.subarray(0, 1000));
+    sprites.list.forEach((s, i) => { scr[1016 + i] = (DATA >> 6) + s.frame; });
+    const base = APEXSCII.screenPrg(chars, scr, color, opts);
+    const init = DATA + sprites.frames.length * 64, code = [];
+    if (String(init).length !== 4) throw new Error('too many sprite frames for the SYS line'); // up to $270F
+    const sta = (v, addr) => code.push(0xa9, v & 0xff, 0x8d, addr & 0xff, addr >> 8); // LDA #v : STA addr
+    let msb = 0, mc = 0, xx = 0, yy = 0;
+    sprites.list.forEach((s, i) => {
+      const vx = s.x + 24, vy = s.y + 50; // VIC sprite coordinates of the screen's top-left corner
+      sta(vx, 0xd000 + 2 * i); sta(vy, 0xd001 + 2 * i); sta(s.color, 0xd027 + i);
+      if (vx > 255) msb |= 1 << i;
+      if (s.mc) mc |= 1 << i;
+      if (s.xx) xx |= 1 << i;
+      if (s.yy) yy |= 1 << i;
+    });
+    sta(msb, 0xd010); sta(mc, 0xd01c); sta(xx, 0xd01d); sta(yy, 0xd017);
+    sta(sprites.mc1, 0xd025); sta(sprites.mc2, 0xd026); sta((1 << n) - 1, 0xd015);
+    code.push(0x4c, 0x10, 0x08); // JMP $0810
+    const at = addr => 2 + addr - 0x0801, out = new Uint8Array(at(init + code.length));
+    out.set(base);
+    sprites.frames.forEach((f, k) => out.set(f, at(DATA + k * 64)));
+    out.set(code, at(init));
+    out.set(Array.from(String(init), ch => ch.charCodeAt(0)), at(0x0806)); // "10 SYS<init>" (4 digits)
+    return out;
+  }
+
   return Object.assign({}, APEXSCII, {
     MAX_H, MATERIALS, OBJECTS, DIRS, DIR_NAMES, charsetKey, statusRows, defaultMap, defaultDungeon, dungeonAt,
-    renderScene, composite, starterTiles, tilesAsm, screenRGB, mapPrg, mapAsm,
+    renderScene, renderDungeon, composite, starterTiles, tilesAsm, screenRGB, mapPrg, mapAsm,
+    spriteFrames, overlaySprites, spritePrg,
   });
 });

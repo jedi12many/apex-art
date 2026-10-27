@@ -72,3 +72,22 @@ node showcase/make.js --rom "C:\path\to\GTK3VICE-3.10-win64\C64\chargen-901225-0
 ```
 
 It needs ffmpeg on the PATH. `--rom` makes the status row use the real C64 ROM font; without it APEXSCII's own letters stand in. `--only iso,dungeon` renders just those views. Videos are 768×544 (2× with the C64 border) at 25 fps.
+
+## RPG mockups and hardware sprites
+
+`showcase/rpg.js` builds two mockup screens for a first-person RPG, `rpg-combat` (a skeleton blocks the corridor) and `rpg-treasure` (a chest in a dead end), as runnable `.prg` files and PNGs in `showcase/out/`. Each screen has:
+- the multicolor brick dungeon view
+- a party panel with HP bars made of block glyphs
+- a minimap at four pixels per maze square
+- a five-row message log in the C64 ROM font, with reverse-video command keys
+
+```bash
+node showcase/rpg.js --rom "C:\path\to\GTK3VICE-3.10-win64\C64\chargen-901225-01.bin"
+```
+
+Monsters and items are **hardware sprites**, not characters. Sprites have their own colours, so there's no colour clash with the walls behind them, and they don't use any of the character set's free slots. The skeleton is four multicolor sprites, each doubled in size, making 96×84 pixels; the chest is one. `apex-core.js` provides:
+- `spriteFrames(art, mc)` turns text art into sprite frames
+- `overlaySprites(rgba, sprites)` draws them over a rendered screen, the way the VIC does
+- `spritePrg(chars, screen, color, opts, sprites)` writes a runnable program: the frames go at `$2000`, and a short set-up routine programs the sprite registers before the screen program starts
+
+`test/vice-check.js` checks both mockups in VICE along with the demo maps.
