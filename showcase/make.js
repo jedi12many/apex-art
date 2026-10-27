@@ -3,7 +3,10 @@
 // RAM, ROM-font status row); the hero moves smoothly because its glyphs are rebuilt each frame, the
 // way C64 games draw software sprites.
 //
-//   node showcase/make.js [--rom <chargen file>] [--only iso,dungeon]
+//   node showcase/make.js [--rom <chargen file>] [--only iso,dungeon] [--themes]
+//
+// --themes makes the theme videos instead: the same walks in multicolor, switching between the
+// APEXSCII themes every few seconds, which on a C64 is just a change of character set.
 //
 // Needs ffmpeg on the PATH. --rom points at a C64 chargen ROM (e.g. VICE's C64/chargen-901225-01.bin)
 // so the status row shows the real ROM font; without it APEXSCII's own text glyphs stand in.
@@ -13,6 +16,7 @@ const APEX = require('../apex-core.js');
 const args = process.argv.slice(2), opt = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
 const rom = opt('--rom') ? fs.readFileSync(opt('--rom')).subarray(0, 2048) : null;
 const only = opt('--only') ? opt('--only').split(',') : Object.keys(APEX.PERSPECTIVES);
+const themed = args.includes('--themes'), THEME_LIST = Object.keys(APEX.THEMES);
 const outDir = path.join(__dirname, 'out');
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -48,14 +52,15 @@ function framed(rgba, border) {
 
 const stats = { frames: 0, overflow: 0 };
 function renderMap(map) {
-  const base = baseCharset(map.persp, map.mode);
+  const base = baseCharset(map.persp, map.mode, map.theme);
   const comp = APEX.composite(base, APEX.renderScene(map), map);
   stats.frames++;
   if (comp.overflow) stats.overflow++;
   return framed(APEX.screenRGB(comp.chars, comp.screen, comp.color, map, rom), map.border);
 }
 const BASES = {};
-const baseCharset = (persp, mode) => BASES[persp + mode] || (BASES[persp + mode] = APEX.buildDefault(mode, persp).glyphs);
+const baseCharset = (persp, mode, theme = 'classic') =>
+  BASES[persp + mode + theme] || (BASES[persp + mode + theme] = APEX.buildDefault(mode, persp, theme).glyphs);
 
 // A title card in the perspective's own character set.
 function titleCard(persp) {
@@ -66,14 +71,23 @@ function titleCard(persp) {
   };
   line(9, 'APEXSCII', 7);
   line(12, viewName(persp), 1);
-  line(15, 'COMMODORE 64 CHARACTER SET', 15);
-  line(17, 'HI-RES 8X8 AND MULTICOLOR 4X8', 12);
+  if (themed) {
+    line(15, THEME_LIST.map(t => APEX.THEMES[t].name.toUpperCase()).join('  '), 15);
+    line(17, 'ONE MAP, FOUR CHARACTER SETS', 12);
+  } else {
+    line(15, 'COMMODORE 64 CHARACTER SET', 15);
+    line(17, 'HI-RES 8X8 AND MULTICOLOR 4X8', 12);
+  }
   return framed(APEX.screenRGB(chars, screen, color, { mode: 'hires', bg: 0, mc1: 0, mc2: 0, romRows: 0 }), 0);
 }
 const viewName = persp => APEX.PERSPECTIVES[persp].name.toUpperCase().replace('°', '');
 const modeName = mode => (mode === 'mc' ? 'MULTICOLOR 4X8' : 'HI-RES 8X8');
 // Status row: the view in reverse, the mode, and a counter; braces don't take a column.
 const status = (persp, mode, extra) => `{${persp === 'dungeon' ? 'DUNGEON' : viewName(persp)}} ${modeName(mode)}${extra ? '  ' + extra : ''}`;
+// Theme videos name the theme instead: {CRYPT} SIDE OBLIQUE  MULTICOLOR 4X8
+const themeStatus = (persp, theme) => `{${APEX.THEMES[theme].name.toUpperCase()}} ${persp === 'dungeon' ? 'DUNGEON' : viewName(persp)}  ${modeName('mc')}`;
+// Theme switches every this many frames (height maps) or moves (dungeon).
+const THEME_FRAMES = 75, THEME_MOVES = 10;
 
 // ---------------------------------------------------------------- height-map scenes
 // Where a step of +1 in gx or gy moves a sprite on screen, and which of two cells draws later.
@@ -111,11 +125,12 @@ async function heightScene(persp, outs) {
   const base = APEX.defaultMap(), n = base.size, step = STEP[persp];
   const start = base.cells.findIndex(c => c.o === HERO);
   base.cells.forEach(c => { if (c.o === HERO) c.o = -1; });
-  const map = mode => ({ ...JSON.parse(JSON.stringify(base)), persp, mode });
+  const map = (mode, theme = 'classic') => ({ ...JSON.parse(JSON.stringify(base)), persp, mode, theme,
+    mc1: APEX.THEME_ART[theme].mc1, mc2: APEX.THEME_ART[theme].mc2 });
   const emit = async buf => { for (const o of outs) await o.write(buf); };
 
   // 1. The world builds: every column rises from flat ground, in a wave from the far corner.
-  const BUILD = 70;
+  const BUILD = themed ? 0 : 70;
   for (let f = 0; f < BUILD; f++) {
     const m = map('hires');
     m.cells.forEach((c, i) => {
@@ -132,9 +147,10 @@ async function heightScene(persp, outs) {
   const waypoints = [[start % n, (start / n) | 0], [6, 6], [7, 3], [3, 1], [start % n, (start / n) | 0]];
   let path = [];
   for (let k = 0; k + 1 < waypoints.length; k++) path = path.concat(route(base, waypoints[k], waypoints[k + 1]).slice(k ? 1 : 0));
-  const WALK = 2 * 150;
+  const WALK = themed ? THEME_FRAMES * THEME_LIST.length : 2 * 150;
   for (let f = 0; f < WALK; f++) {
-    const mode = f < WALK / 2 ? 'hires' : 'mc', m = map(mode);
+    const theme = themed ? THEME_LIST[Math.floor(f / THEME_FRAMES)] : 'classic';
+    const mode = themed || f >= WALK / 2 ? 'mc' : 'hires', m = map(mode, theme);
     const t = f / TILE_FRAMES, i = Math.floor(t) % (path.length - 1), frac = t - Math.floor(t);
     const [ax, ay] = path[i], [bx, by] = path[i + 1];
     // The sprite belongs to whichever cell draws later, offset back towards where it really is.
@@ -145,7 +161,7 @@ async function heightScene(persp, outs) {
     cell.o = HERO;
     cell.ox = Math.round(dx * k / 2) * 2; // whole fat pixels, so multicolor frames stay clean
     cell.oy = Math.round(dy * k);
-    m.caption = status(persp, mode, `STEPS ${String(Math.floor(t)).padStart(3, '0')}`);
+    m.caption = themed ? themeStatus(persp, theme) : status(persp, mode, `STEPS ${String(Math.floor(t)).padStart(3, '0')}`);
     await emit(renderMap(m));
   }
 }
@@ -158,17 +174,21 @@ async function dungeonScene(outs) {
   const d = map.dungeon, open = (x, y) => APEX.dungeonAt(d, x, y) !== '#';
   const ahead = dir => [d.x + APEX.DIRS[dir][0], d.y + APEX.DIRS[dir][1]];
   const STONE = d.mat, BRICK = APEX.MATERIALS.findIndex(m => m.name === 'Brick');
+  let theme = 'classic';
   const show = async (mode, label) => {
     map.mode = mode;
-    d.mat = mode === 'mc' ? BRICK : STONE; // multicolor half shows off the brick walls
-    map.caption = status('dungeon', mode, label || `FACING ${APEX.DIR_NAMES[d.dir]}`);
+    map.theme = theme;
+    Object.assign(map, { mc1: APEX.THEME_ART[theme].mc1, mc2: APEX.THEME_ART[theme].mc2 });
+    d.mat = themed ? 2 : mode === 'mc' ? BRICK : STONE; // the multicolor half shows off brick; themes use their wall
+    map.caption = themed ? themeStatus('dungeon', theme) : status('dungeon', mode, label || `FACING ${APEX.DIR_NAMES[d.dir]}`);
     await emit(renderMap(map), MOVE_FRAMES);
   };
   // Look around first, then follow the right-hand wall through the maze.
-  for (let k = 0; k < 4; k++) { await show('hires'); d.dir = (d.dir + 1) % 4; }
-  const MOVES = 64;
+  if (!themed) for (let k = 0; k < 4; k++) { await show('hires'); d.dir = (d.dir + 1) % 4; }
+  const MOVES = themed ? THEME_MOVES * THEME_LIST.length : 64;
   for (let k = 0; k < MOVES; k++) {
-    const mode = k < MOVES / 2 ? 'hires' : 'mc', right = (d.dir + 1) % 4;
+    if (themed) theme = THEME_LIST[Math.floor(k / THEME_MOVES)];
+    const mode = themed || k >= MOVES / 2 ? 'mc' : 'hires', right = (d.dir + 1) % 4;
     if (open(...ahead(right))) d.dir = right;
     else if (!open(...ahead(d.dir))) { d.dir = (d.dir + 3) % 4; await show(mode); continue; }
     if (open(...ahead(d.dir))) { [d.x, d.y] = ahead(d.dir); }
@@ -178,9 +198,10 @@ async function dungeonScene(outs) {
 
 // ---------------------------------------------------------------- main
 (async () => {
-  const reel = encoder(path.join(outDir, 'apexscii-reel.mp4'));
+  const kind = themed ? 'apexscii-themes' : 'apexscii';
+  const reel = encoder(path.join(outDir, `${kind}-reel.mp4`));
   for (const persp of only) {
-    const file = path.join(outDir, `apexscii-${persp}.mp4`), own = encoder(file), outs = [own, reel];
+    const file = path.join(outDir, `${kind}-${persp}.mp4`), own = encoder(file), outs = [own, reel];
     const before = { ...stats };
     for (let k = 0; k < FPS * 1.6; k++) for (const o of outs) await o.write(titleCard(persp));
     if (persp === 'dungeon') await dungeonScene(outs); else await heightScene(persp, outs);
@@ -190,5 +211,5 @@ async function dungeonScene(outs) {
       `${stats.overflow - before.overflow} with glyph overflow`);
   }
   await reel.end();
-  console.log(`reel      ${path.relative(process.cwd(), path.join(outDir, 'apexscii-reel.mp4'))}`);
+  console.log(`reel      ${path.relative(process.cwd(), path.join(outDir, `${kind}-reel.mp4`))}`);
 })().catch(e => { console.error(e); process.exit(1); });

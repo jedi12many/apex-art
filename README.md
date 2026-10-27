@@ -91,3 +91,19 @@ Monsters and items are **hardware sprites**, not characters. Sprites have their 
 - `spritePrg(chars, screen, color, opts, sprites)` writes a runnable program: the frames go at `$2000`, and a short set-up routine programs the sprite registers before the screen program starts
 
 `test/vice-check.js` checks both mockups in VICE along with the demo maps.
+
+## Themes
+
+APEXSCII's themes (Classic, Crypt, Forest, Town) repaint every character set with new textures while keeping each glyph's role and screen code. `apex-core.js` gives each theme materials and objects in the same roles as the classic ones, so any map renders in any theme:
+- materials, in order: ground, stone, tower, water, path, paving
+- objects, in order: the hero, then a scenery object and an item in the tree and crystal slots
+
+| Theme | Materials | Objects |
+|-------|-----------|---------|
+| Crypt | moss floor, crypt stone and walls, black water, bone dust, tomb slabs | tombstone, torch |
+| Forest | meadow, boulders, log walls, pond, dirt path, planks | pine, mushroom |
+| Town | cobbled plaza, stone, roofed half-timbered houses, canal, path, slate roofs | lamp post, barrel |
+
+A map picks its theme with `map.theme`. A material can use a different texture per face, e.g. a roof on top of timbered walls; the compositor fills the junctions that creates from free slots.
+
+`node showcase/make.js --themes` renders the theme videos: the same walks in multicolor, switching theme every three seconds, which on a C64 is just a change of character set. `test/vice-check.js` also checks the demo map in every theme, perspective and mode.

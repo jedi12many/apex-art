@@ -29,6 +29,16 @@ for (const persp of Object.keys(APEX.PERSPECTIVES)) for (const mode of ['hires',
   screens.push({ label: `${persp} ${mode}`, prg: path.join(repo, 'out', `apexscii${tag}-demo.prg`), border: map.border,
     rgba: APEX.screenRGB(comp.chars, comp.screen, comp.color, map, rom) });
 }
+// The same demo map in every other theme, built here rather than kept in out/.
+for (const theme of Object.keys(APEX.THEMES).filter(t => t !== 'classic')) {
+  for (const persp of Object.keys(APEX.PERSPECTIVES)) for (const mode of ['hires', 'mc']) {
+    const { glyphs } = APEX.buildDefault(mode, persp, theme), art = APEX.THEME_ART[theme];
+    const map = Object.assign(APEX.defaultMap(), { mode, persp, theme, mc1: art.mc1, mc2: art.mc2 });
+    const comp = APEX.composite(glyphs, APEX.renderScene(map), map), prg = path.join(shots, `${theme}-${persp}-${mode}.prg`);
+    fs.writeFileSync(prg, APEX.mapPrg(comp.chars, comp.screen, comp.color, map));
+    screens.push({ label: `${theme} ${persp} ${mode}`, prg, border: map.border, rgba: APEX.screenRGB(comp.chars, comp.screen, comp.color, map, rom) });
+  }
+}
 for (const m of mockups()) {
   const prg = path.join(shots, `${m.name}.prg`);
   fs.writeFileSync(prg, m.prg);

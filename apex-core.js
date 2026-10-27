@@ -52,6 +52,71 @@
       '................', '................', '................', '................'] },
   ];
 
+  // ------------------------------------------------------------------ themes
+  // Each APEXSCII theme (see APEXSCII.THEMES) gets materials and objects in the same roles as the
+  // classic ones, so any map renders in any theme: materials are [ground, stone, tower, water, path,
+  // paving] and objects [hero, tree role, crystal role]. A material's set may be per face, e.g. a
+  // roof on top of timbered walls. mc1/mc2 are the theme's shared multicolor shades.
+  const art = (name, palette, mc, rows) => {
+    if (rows.length !== 24 || rows.some(r => r.length !== 16)) throw new Error(`object ${name} must be 16x24`);
+    return { name, palette, mc, rows };
+  };
+  const blank = n => Array(n).fill('................');
+  const THEME_OBJECTS = {
+    Tombstone: art('Tombstone', { '#': 15 }, { '#': [1] }, [...blank(4),
+      '.....oooooo.....', '....o######o....', '...o########o...', '...o###oo###o...', '...o##oooo##o...', '...o###oo###o...',
+      '...o###oo###o...', '...o########o...', '...o########o...', '...o########o...', '...o########o...', '...o########o...',
+      '..oo########oo..', '.o############o.', '.o############o.', '.oooooooooooooo.', ...blank(4)]),
+    Torch: art('Torch', { '#': 8, 'y': 7, 't': 9 }, { '#': [3, 7], 'y': [3, 1], 't': [2] }, ['................',
+      '.......oo.......', '......o##o......', '.....o#yy#o.....', '.....o#yy#o.....', '......o##o......', '.....oo##oo.....',
+      '....otttttto....', '.....otttto.....', ...Array(8).fill('......otto......'),
+      '.....otttto.....', '....otttttto....', '....oooooooo....', ...blank(4)]),
+    Pine: art('Pine', { '#': 5, 't': 9 }, { '#': [3, 5], 't': [2] }, [
+      '.......oo.......', '......o##o......', '.....o####o.....', '....o######o....', '.....o####o.....', '....o######o....',
+      '...o########o...', '....o######o....', '...o########o...', '..o##########o..', '...o########o...', '..o##########o..',
+      '.o############o.', '..ooooottooooo..', '......otto......', '......otto......', '......otto......', '.....otttto.....',
+      '....oooooooo....', ...blank(5)]),
+    Mushroom: art('Mushroom', { '#': 2, 'w': 1 }, { '#': [3, 2], 'w': [1] }, [...blank(8),
+      '.....oooooo.....', '...oo######oo...', '..o##ww###ww#o..', '.o############o.', '.o#ww######ww#o.', '.oooooooooooooo.',
+      '.....owwwwo.....', '.....owwwwo.....', '.....owwwwo.....', '....owwwwwwo....', '....oooooooo....', ...blank(5)]),
+    Lamp: art('Lamp', { '#': 11, 'y': 7 }, { '#': [2], 'y': [3, 7] }, ['................',
+      '......oooo......', '.....o####o.....', '....o#yyyy#o....', '....o#yyyy#o....', '.....o####o.....', '......oooo......',
+      '.......oo.......', ...Array(10).fill('......o##o......'), '.....o####o.....', '....oooooooo....', ...blank(4)]),
+    Barrel: art('Barrel', { '#': 11, 't': 9 }, { '#': [2], 't': [3, 2] }, [...blank(6),
+      '....oooooooo....', '...o########o...', '..otttttttttto..', '..otttttttttto..', '..o##########o..', '..otttttttttto..',
+      '..otttttttttto..', '..o##########o..', '..otttttttttto..', '..otttttttttto..', '...o########o...', '....oooooooo....',
+      ...blank(6)]),
+  };
+  const mat = (name, set, T, L, R, mcColor) => ({ name, set, colors: { T, L, R }, mcColor });
+  const HERO = OBJECTS[0];
+  const THEME_ART = {
+    classic: { materials: MATERIALS, objects: OBJECTS, mc1: 12, mc2: 11 },
+    crypt: {
+      mc1: 12, mc2: 11,
+      materials: [mat('Moss floor', 'crypt-moss', 5, 12, 11, 5), mat('Crypt stone', 'crypt-stone', 15, 12, 11, 1),
+        mat('Crypt wall', 'crypt-stone', 12, 11, 11, 6), mat('Black water', 'crypt-moss', 6, 11, 11, 6),
+        mat('Bone dust', 'crypt-stone', 7, 12, 11, 7), mat('Tomb slab', 'crypt-stone', 12, 11, 11, 4)],
+      objects: [HERO, THEME_OBJECTS.Tombstone, THEME_OBJECTS.Torch],
+    },
+    forest: {
+      mc1: 9, mc2: 11,
+      materials: [mat('Meadow', 'forest-grass', 13, 8, 9, 5), mat('Boulder', 'forest-grass', 15, 12, 11, 1),
+        mat('Log wall', 'forest-wood', 8, 9, 9, 2), mat('Pond', 'forest-grass', 14, 6, 6, 6),
+        mat('Dirt path', 'forest-grass', 8, 9, 9, 7), mat('Planks', 'forest-wood', 7, 8, 9, 7)],
+      objects: [HERO, THEME_OBJECTS.Pine, THEME_OBJECTS.Mushroom],
+    },
+    town: {
+      mc1: 12, mc2: 9,
+      materials: [mat('Plaza', 'town-cobble', 12, 15, 11, 7), mat('Stone', 'town-cobble', 12, 15, 11, 3),
+        mat('House', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 2, 15, 12, 2), mat('Canal', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 14, 12, 11, 6),
+        mat('Path', 'town-cobble', 7, 12, 11, 7), mat('Roof slate', 'town-roof', 11, 10, 2, 4)],
+      objects: [HERO, THEME_OBJECTS.Lamp, THEME_OBJECTS.Barrel],
+    },
+  };
+  const themeArt = theme => THEME_ART[theme || 'classic'];
+  // The texture set behind one face of a material.
+  const setFor = (m, face) => (typeof m.set === 'string' ? m.set : m.set[face] || m.set.T);
+
   // --------------------------------------------------------------- the map
   const W = 320, H = 200, N = 8, MAX_H = 6;
   const ORIGIN_X = 144, BASE_Y = 48; // multiples of 8 keep every edge char-aligned
@@ -81,7 +146,7 @@
   // Draw one iso block with its 32x32 box at (sx, sy) through plot(x, y, value, colour, isObj).
   // Multicolor values are computed per pixel pair, so they come out duplicated across each pair.
   function drawBlock(plot, sx, sy, mat, mc, withSides) {
-    const set = SETS[mat.set], mset = MC_SETS[mat.set];
+    const pat = f => (mc ? MC_SETS : SETS)[setFor(mat, f)][f];
     for (let px = 0; px < 32; px++) {
       const left = px < 16;
       const top = left ? 7 - (px >> 1) : (px - 16) >> 1;
@@ -90,8 +155,8 @@
       for (let py = top; py < end; py++) {
         const f = py < bot ? 'T' : (left ? 'L' : 'R');
         const x = sx + px, y = sy + py;
-        if (mc) plot(x, y, mset[f](x >> 1, y), mat.mcColor, false);
-        else plot(x, y, set[f](x, y), mat.colors[f], false);
+        if (mc) plot(x, y, pat(f)(x >> 1, y), mat.mcColor, false);
+        else plot(x, y, pat(f)(x, y), mat.colors[f], false);
       }
     }
   }
@@ -120,10 +185,13 @@
   // ------------------------------------------------- the other perspectives
   // Plot one pixel of a face, using the perspective's pattern for it and the material's colour.
   const FACE_COLOR = { T: 'T', L: 'L', F: 'L', R: 'R', W: 'T', S: 'L', G: 'R' };
+  // Which of a material's per-face texture sets a view's face uses: floors are tops, walls are sides.
+  const SET_FACE = { T: 'T', G: 'T', C: 'T', L: 'L', F: 'L', W: 'L', D: 'L', R: 'R', S: 'R' };
   function facePixel(plot, x, y, mat, persp, face, mc) {
     const key = PERSPECTIVES[persp].key[face];
-    if (mc) plot(x, y, MC_SETS[mat.set][key](x >> 1, y), mat.mcColor, false);
-    else plot(x, y, SETS[mat.set][key](x, y), face === 'D' ? 8 : face === 'C' ? 0 : mat.colors[FACE_COLOR[face]], false);
+    const set = setFor(mat, SET_FACE[face]);
+    if (mc) plot(x, y, MC_SETS[set][key](x >> 1, y), mat.mcColor, false);
+    else plot(x, y, SETS[set][key](x, y), face === 'D' ? 8 : face === 'C' ? 0 : mat.colors[FACE_COLOR[face]], false);
   }
 
   // Military: a 16x16 diamond (2x2 chars) with 45° edges, and `side` pixels of wall below it.
@@ -165,17 +233,19 @@
   // The height-map views all read the same map, so one world can be seen from any of them.
   const VIEW_RENDERERS = {
     military(map, plot, mc, setIdx) {
+      const th = themeArt(map.theme);
       const n = map.size;
       for (let s = 0; s <= 2 * n - 2; s++) for (let gx = Math.max(0, s - n + 1); gx <= Math.min(s, n - 1); gx++) {
         const gy = s - gx, c = map.cells[gy * n + gx];
         if (c.m < 0) continue;
         setIdx(gy * n + gx);
         const sx = 152 + (gx - gy) * 8, top = 48 + (gx + gy) * 8 - c.h * 8;
-        drawMilitaryBlock(plot, sx, top, MATERIALS[c.m], mc, c.h * 8);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + (c.ox || 0), top - 14 + (c.oy || 0), mc);
+        drawMilitaryBlock(plot, sx, top, th.materials[c.m], mc, c.h * 8);
+        if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + (c.ox || 0), top - 14 + (c.oy || 0), mc);
       }
     },
     oblique(map, plot, mc, setIdx) {
+      const th = themeArt(map.theme);
       const n = map.size, hAt = (x, y) => {
         const c = x >= 0 && y >= 0 && x < n && y < n ? map.cells[y * n + x] : null;
         return c && c.m >= 0 ? c.h : -1;
@@ -185,21 +255,22 @@
         if (c.m < 0) continue;
         setIdx(gy * n + gx);
         const sx = 96 + gx * 16, top = 48 + gy * 16 - c.h * 8;
-        drawObliqueBlock(plot, sx, top, MATERIALS[c.m], mc, c.h,
+        drawObliqueBlock(plot, sx, top, th.materials[c.m], mc, c.h,
           { N: hAt(gx, gy - 1), E: hAt(gx + 1, gy), S: hAt(gx, gy + 1), W: hAt(gx - 1, gy) });
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + (c.ox || 0), top - 10 + (c.oy || 0), mc);
+        if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + (c.ox || 0), top - 10 + (c.oy || 0), mc);
       }
     },
     side(map, plot, mc, setIdx) {
+      const th = themeArt(map.theme);
       const n = map.size;
       for (let gz = n - 1; gz >= 0; gz--) for (let gx = 0; gx < n; gx++) {
         const gy = n - 1 - gz, c = map.cells[gy * n + gx]; // map row 0 is the far side
         if (c.m < 0) continue;
         setIdx(gy * n + gx);
-        const mat = MATERIALS[c.m], sx = 64 + gx * 16 + gz * 8, ground = 176 - gz * 8;
+        const mat = th.materials[c.m], sx = 64 + gx * 16 + gz * 8, ground = 176 - gz * 8;
         if (c.h === 0) drawSideBlock(plot, sx, ground, mat, mc, false);
         else for (let z = 0; z < c.h; z++) drawSideBlock(plot, sx, ground - 16 - z * 16, mat, mc, true);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 4 + (c.ox || 0), ground - 16 * c.h - 24 + (c.oy || 0), mc);
+        if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + 4 + (c.ox || 0), ground - 16 * c.h - 24 + (c.oy || 0), mc);
       }
     },
   };
@@ -226,8 +297,8 @@
   const dungeonAt = (d, x, y) => x < 0 || y < 0 || x >= d.size || y >= d.size ? '#' : d.rows[y][x];
 
   // First-person view (160x128 at vx,vy), drawn far to near, plus an optional minimap to the right.
-  function renderDungeon(d, plot, mc, vx, vy, withMap) {
-    const mat = MATERIALS[d.mat], cx = vx + 80, cy = vy + 64;
+  function renderDungeon(d, plot, mc, vx, vy, withMap, theme) {
+    const mat = themeArt(theme).materials[d.mat], cx = vx + 80, cy = vy + 64;
     const f = DIRS[d.dir], l = DIRS[(d.dir + 3) % 4], r = DIRS[(d.dir + 1) % 4];
     const px = (x, y, face) => facePixel(plot, x, y, mat, 'dungeon', face, mc);
     const rect = (x0, y0, x1, y1, face) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) px(x, y, face); };
@@ -287,9 +358,9 @@
       const i = y * W + x;
       ink[i] = +v; if (c >= 0) col[i] = c; own[i] = idx; obj[i] = isObj ? 1 : 0;
     }
-    const persp = map.persp || 'iso';
+    const persp = map.persp || 'iso', th = themeArt(map.theme);
     if (persp !== 'iso') {
-      if (persp === 'dungeon') renderDungeon(map.dungeon, plot, mc, 8, 8, true);
+      if (persp === 'dungeon') renderDungeon(map.dungeon, plot, mc, 8, 8, true, map.theme);
       else VIEW_RENDERERS[persp](map, plot, mc, i => { idx = i; });
       return { ink, col, own, obj };
     }
@@ -298,11 +369,11 @@
         const gy = s - gx, c = map.cells[gy * n + gx];
         idx = gy * n + gx;
         if (c.m < 0) continue;
-        const mat = MATERIALS[c.m];
+        const mat = th.materials[c.m];
         const sx = ORIGIN_X + (gx - gy) * 16, base = BASE_Y + (gx + gy) * 8;
         if (c.h === 0) drawBlock(plot, sx, base + 16, mat, mc, false);
         else for (let z = 0; z < c.h; z++) drawBlock(plot, sx, base - z * 16, mat, mc, true);
-        if (c.o >= 0) drawObject(plot, OBJECTS[c.o], sx + 8 + (c.ox || 0), base + 16 - 16 * c.h - 8 + (c.oy || 0), mc);
+        if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + 8 + (c.ox || 0), base + 16 - 16 * c.h - 8 + (c.oy || 0), mc);
       }
     }
     return { ink, col, own, obj };
@@ -571,6 +642,6 @@
   return Object.assign({}, APEXSCII, {
     MAX_H, MATERIALS, OBJECTS, DIRS, DIR_NAMES, charsetKey, statusRows, defaultMap, defaultDungeon, dungeonAt,
     renderScene, renderDungeon, composite, starterTiles, tilesAsm, screenRGB, mapPrg, mapAsm,
-    spriteFrames, overlaySprites, spritePrg,
+    THEME_ART, spriteFrames, overlaySprites, spritePrg,
   });
 });
