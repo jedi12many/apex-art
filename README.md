@@ -108,6 +108,14 @@ A map picks its theme with `map.theme`. A material can use a different texture p
 
 `node showcase/make.js --themes` renders the theme videos: the same walks in multicolor, switching theme every three seconds, which on a C64 is just a change of character set. `test/vice-check.js` also checks the demo map in every theme, perspective and mode.
 
+## Half steps, outlines and animation
+
+- **Half steps:** a map cell's height can be in half units (`h: 1.5`). Columns are drawn as one prism, so in the isometric and side views stairs and ledges use the existing glyphs and need no extra slots.
+- **Outline style:** set `map.outline` and build the character set with `{ outline: true }`. The renderer then darkens the first pixel where two different faces meet, by the same rule as the outlined glyphs.
+- **Animation:** set `map.frame` to animate. Water in every theme (`anim: 'water'`) cycles APEXSCII's four ripple frames, and the Crypt torch flickers through three flame shapes. Without `map.frame`, everything renders as a still picture, exactly as before.
+
+`showcase/features.js` builds six screens showing these: plain versus outlined hi-res, stairs in isometric and side view, and two animation frames. It writes them to `showcase/out/` as `feature-*.prg` and a comparison sheet, `features.png`. The theme videos animate their water and torches. `test/vice-check.js` checks the feature screens in VICE too.
+
 ## Licence
 
 MIT, copyright (c) 2026 jedi12many; see [LICENSE](LICENSE). The character sets, generated files and tools may be used in any project, including commercial games, as long as the copyright notice is kept. The C64 ROM font is never included: the text glyphs are redrawn, and ROM-font previews read the `chargen` file from your own VICE install.

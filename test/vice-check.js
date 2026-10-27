@@ -1,5 +1,6 @@
-// Runs every demo map PRG in out/ and the RPG mockups under VICE, and checks each screenshot
-// pixel-for-pixel against the editor's own render (VICE's ROM font predicts the status rows).
+// Runs every demo map PRG in out/, the themed maps, the feature screens and the RPG mockups under VICE,
+// and checks each screenshot pixel-for-pixel against the editor's own render (VICE's ROM font
+// predicts the status rows).
 //
 //   node test/vice-check.js <path to VICE folder> [--ntsc] [--cycles 12000000,15000017]
 //
@@ -17,6 +18,7 @@ if (!viceDir) { console.error('usage: node test/vice-check.js <VICE folder> [--n
 const repo = path.join(__dirname, '..');
 const APEX = require(path.join(repo, 'apex-core.js'));
 const { mockups } = require(path.join(repo, 'showcase', 'rpg.js'));
+const features = require(path.join(repo, 'showcase', 'features.js')).screens;
 const { exe, rom } = findVice(viceDir);
 const shots = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-art-vice-'));
 
@@ -38,6 +40,11 @@ for (const theme of Object.keys(APEX.THEMES).filter(t => t !== 'classic')) {
     fs.writeFileSync(prg, APEX.mapPrg(comp.chars, comp.screen, comp.color, map));
     screens.push({ label: `${theme} ${persp} ${mode}`, prg, border: map.border, rgba: APEX.screenRGB(comp.chars, comp.screen, comp.color, map, rom) });
   }
+}
+for (const f of features()) {
+  const prg = path.join(shots, `${f.name}.prg`);
+  fs.writeFileSync(prg, f.prg);
+  screens.push({ label: f.name, prg, border: f.map.border, rgba: f.render(rom) });
 }
 for (const m of mockups()) {
   const prg = path.join(shots, `${m.name}.prg`);

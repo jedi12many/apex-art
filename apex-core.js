@@ -21,7 +21,7 @@
     { name: 'Grass', set: 'smooth', colors: { T: 13, L: 8, R: 9 }, mcColor: 5 },
     { name: 'Stone', set: 'smooth', colors: { T: 15, L: 12, R: 11 }, mcColor: 1 },
     { name: 'Brick', set: 'brick', colors: { T: 8, L: 10, R: 2 }, mcColor: 2 },
-    { name: 'Water', set: 'smooth', colors: { T: 14, L: 6, R: 6 }, mcColor: 6 },
+    { name: 'Water', set: 'smooth', colors: { T: 14, L: 6, R: 6 }, mcColor: 6, anim: 'water' },
     { name: 'Sand', set: 'smooth', colors: { T: 7, L: 8, R: 9 }, mcColor: 7 },
     { name: 'Paving', set: 'brick', colors: { T: 15, L: 12, R: 11 }, mcColor: 4 },
   ];
@@ -87,6 +87,13 @@
       '..otttttttttto..', '..o##########o..', '..otttttttttto..', '..otttttttttto..', '...o########o...', '....oooooooo....',
       ...blank(6)]),
   };
+  // The torch's flame flickers: frames replace its first six rows.
+  const flame = (torch, top) => [...top, ...torch.rows.slice(top.length)];
+  THEME_OBJECTS.Torch.frames = [
+    THEME_OBJECTS.Torch.rows,
+    flame(THEME_OBJECTS.Torch, ['................', '........oo......', '.......o##o.....', '......o#yy#o....', '.....o#yy#o.....', '......o##o......']),
+    flame(THEME_OBJECTS.Torch, ['.......oo.......', '......o##o......', '.....o#yy#o.....', '.....o#yy#o.....', '.....o#yy#o.....', '......o##o......']),
+  ];
   const mat = (name, set, T, L, R, mcColor) => ({ name, set, colors: { T, L, R }, mcColor });
   const HERO = OBJECTS[0];
   const THEME_ART = {
@@ -94,28 +101,37 @@
     crypt: {
       mc1: 12, mc2: 11,
       materials: [mat('Moss floor', 'crypt-moss', 5, 12, 11, 5), mat('Crypt stone', 'crypt-stone', 15, 12, 11, 1),
-        mat('Crypt wall', 'crypt-stone', 12, 11, 11, 6), mat('Black water', 'crypt-moss', 6, 11, 11, 6),
+        mat('Crypt wall', 'crypt-stone', 12, 11, 11, 6), { ...mat('Black water', 'crypt-moss', 6, 11, 11, 6), anim: 'water' },
         mat('Bone dust', 'crypt-stone', 7, 12, 11, 7), mat('Tomb slab', 'crypt-stone', 12, 11, 11, 4)],
       objects: [HERO, THEME_OBJECTS.Tombstone, THEME_OBJECTS.Torch],
     },
     forest: {
       mc1: 9, mc2: 11,
       materials: [mat('Meadow', 'forest-grass', 13, 8, 9, 5), mat('Boulder', 'forest-grass', 15, 12, 11, 1),
-        mat('Log wall', 'forest-wood', 8, 9, 9, 2), mat('Pond', 'forest-grass', 14, 6, 6, 6),
+        mat('Log wall', 'forest-wood', 8, 9, 9, 2), { ...mat('Pond', 'forest-grass', 14, 6, 6, 6), anim: 'water' },
         mat('Dirt path', 'forest-grass', 8, 9, 9, 7), mat('Planks', 'forest-wood', 7, 8, 9, 7)],
       objects: [HERO, THEME_OBJECTS.Pine, THEME_OBJECTS.Mushroom],
     },
     town: {
       mc1: 12, mc2: 9,
       materials: [mat('Plaza', 'town-cobble', 12, 15, 11, 7), mat('Stone', 'town-cobble', 12, 15, 11, 3),
-        mat('House', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 2, 15, 12, 2), mat('Canal', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 14, 12, 11, 6),
+        mat('House', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 2, 15, 12, 2), { ...mat('Canal', { T: 'town-roof', L: 'town-cobble', R: 'town-cobble' }, 14, 12, 11, 6), anim: 'water' },
         mat('Path', 'town-cobble', 7, 12, 11, 7), mat('Roof slate', 'town-roof', 11, 10, 2, 4)],
       objects: [HERO, THEME_OBJECTS.Lamp, THEME_OBJECTS.Barrel],
     },
   };
   const themeArt = theme => THEME_ART[theme || 'classic'];
-  // The texture set behind one face of a material.
-  const setFor = (m, face) => (typeof m.set === 'string' ? m.set : m.set[face] || m.set.T);
+  // The animation frame being drawn (map.frame), or null for a still picture.
+  let animFrame = null;
+  // The texture set behind one face of a material. While animating, a material with anim uses that
+  // animation's current frame for its top face.
+  function setFor(m, face) {
+    if (animFrame !== null && m.anim && face === 'T') {
+      const frames = APEXSCII.ANIMATIONS[m.anim];
+      return frames[animFrame % frames.length];
+    }
+    return typeof m.set === 'string' ? m.set : m.set[face] || m.set.T;
+  }
 
   // --------------------------------------------------------------- the map
   const W = 320, H = 200, N = 8, MAX_H = 6;
@@ -145,25 +161,26 @@
 
   // Draw one iso block with its 32x32 box at (sx, sy) through plot(x, y, value, colour, isObj).
   // Multicolor values are computed per pixel pair, so they come out duplicated across each pair.
-  function drawBlock(plot, sx, sy, mat, mc, withSides) {
+  function drawBlock(plot, sx, sy, mat, mc, side) { // side: pixels of wall below the top (0 for a floor tile)
     const pat = f => (mc ? MC_SETS : SETS)[setFor(mat, f)][f];
     for (let px = 0; px < 32; px++) {
       const left = px < 16;
       const top = left ? 7 - (px >> 1) : (px - 16) >> 1;
       const bot = left ? 8 + (px >> 1) : 15 - ((px - 16) >> 1);
-      const end = withSides ? bot + 16 : bot;
+      const end = bot + side;
       for (let py = top; py < end; py++) {
         const f = py < bot ? 'T' : (left ? 'L' : 'R');
         const x = sx + px, y = sy + py;
-        if (mc) plot(x, y, pat(f)(x >> 1, y), mat.mcColor, false);
-        else plot(x, y, pat(f)(x, y), mat.colors[f], false);
+        if (mc) plot(x, y, pat(f)(x >> 1, y), mat.mcColor, false, f);
+        else plot(x, y, pat(f)(x, y), mat.colors[f], false, f);
       }
     }
   }
 
   // Draw a 16x24 object with its top-left at (ox, oy); 'o' pixels clear ink, '.' is transparent.
   function drawObject(plot, ob, ox, oy, mc) {
-    if (mc) ob.rows.forEach((r, y) => {
+    const rows = animFrame !== null && ob.frames ? ob.frames[animFrame % ob.frames.length] : ob.rows;
+    if (mc) rows.forEach((r, y) => {
       for (let x = 0; x < 16; x += 2) {
         const a = r[x], b = r[x + 1];
         const ch = /[^.o]/.test(a) ? a : /[^.o]/.test(b) ? b : (a === 'o' || b === 'o') ? 'o' : '.';
@@ -172,7 +189,7 @@
         for (const dx of [0, 1]) plot(ox + x + dx, oy + y, v, c === undefined ? -1 : c, ch !== 'o');
       }
     });
-    else ob.rows.forEach((r, y) => {
+    else rows.forEach((r, y) => {
       for (let x = 0; x < 16; x++) {
         const ch = r[x];
         if (ch === '.') continue;
@@ -190,8 +207,8 @@
   function facePixel(plot, x, y, mat, persp, face, mc) {
     const key = PERSPECTIVES[persp].key[face];
     const set = setFor(mat, SET_FACE[face]);
-    if (mc) plot(x, y, MC_SETS[set][key](x >> 1, y), mat.mcColor, false);
-    else plot(x, y, SETS[set][key](x, y), face === 'D' ? 8 : face === 'C' ? 0 : mat.colors[FACE_COLOR[face]], false);
+    if (mc) plot(x, y, MC_SETS[set][key](x >> 1, y), mat.mcColor, false, face);
+    else plot(x, y, SETS[set][key](x, y), face === 'D' ? 8 : face === 'C' ? 0 : mat.colors[FACE_COLOR[face]], false, face);
   }
 
   // Military: a 16x16 diamond (2x2 chars) with 45° edges, and `side` pixels of wall below it.
@@ -223,11 +240,10 @@
 
   // Side oblique (cabinet): 16x16 front face, top face receding up-right by 8px at 45°,
   // and an 8px side face on the right. `full` false draws only the top (a block at ground level).
-  function drawSideBlock(plot, sx, sy, mat, mc, full) {
+  function drawSideBlock(plot, sx, sy, mat, mc, front) { // front: height of the front face in pixels
     for (let r = 0; r < 8; r++) for (let x = 7 - r; x < 23 - r; x++) facePixel(plot, sx + x, sy - 8 + r, mat, 'side', 'T', mc);
-    if (!full) return;
-    for (let py = 0; py < 16; py++) for (let px = 0; px < 16; px++) facePixel(plot, sx + px, sy + py, mat, 'side', 'F', mc);
-    for (let c = 0; c < 8; c++) for (let y = sy - 1 - c; y <= sy + 14 - c; y++) facePixel(plot, sx + 16 + c, y, mat, 'side', 'R', mc);
+    for (let py = 0; py < front; py++) for (let px = 0; px < 16; px++) facePixel(plot, sx + px, sy + py, mat, 'side', 'F', mc);
+    if (front) for (let c = 0; c < 8; c++) for (let y = sy - 1 - c; y <= sy + front - 2 - c; y++) facePixel(plot, sx + 16 + c, y, mat, 'side', 'R', mc);
   }
 
   // The height-map views all read the same map, so one world can be seen from any of them.
@@ -268,8 +284,7 @@
         if (c.m < 0) continue;
         setIdx(gy * n + gx);
         const mat = th.materials[c.m], sx = 64 + gx * 16 + gz * 8, ground = 176 - gz * 8;
-        if (c.h === 0) drawSideBlock(plot, sx, ground, mat, mc, false);
-        else for (let z = 0; z < c.h; z++) drawSideBlock(plot, sx, ground - 16 - z * 16, mat, mc, true);
+        drawSideBlock(plot, sx, ground - 16 * c.h, mat, mc, 16 * c.h);
         if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + 4 + (c.ox || 0), ground - 16 * c.h - 24 + (c.oy || 0), mc);
       }
     },
@@ -348,32 +363,44 @@
 
   // Rasterise the map into 320x200 pixel values + per-pixel colour + column owner.
   // Hi-res: ink holds 0/1. Multicolor: ink holds the 2-bit value, duplicated across each pixel pair.
+  // Heights may be in half units (0.5, 1.5, ...): a column is one prism, so in the isometric and side
+  // views a half step is a whole character row and still lands on the shade-set glyphs.
+  //
+  // map.outline draws the outline style: a pixel goes dark when the pixel above it belongs to a
+  // different face, the same rule the outlined glyph sets use (so pass { outline: true } to
+  // buildDefault for the matching character set). It skips each cell's top row, like the glyphs.
   function renderScene(map) {
     const ink = new Uint8Array(W * H), col = new Uint8Array(W * H), own = new Int16Array(W * H).fill(-1);
     const obj = new Uint8Array(W * H); // 1 where an object's ink landed
+    const face = new Uint8Array(W * H); // which face (char code of its letter) drew each pixel; 0 for none
     const n = map.size, mc = map.mode === 'mc', mapBottom = (25 - statusRows(map)) * 8;
     let idx = -1;
-    function plot(x, y, v, c, isObj) {
+    function plot(x, y, v, c, isObj, f) {
       if (x < 0 || y < 0 || x >= W || y >= mapBottom) return; // status rows stay clear
       const i = y * W + x;
-      ink[i] = +v; if (c >= 0) col[i] = c; own[i] = idx; obj[i] = isObj ? 1 : 0;
+      ink[i] = +v; if (c >= 0) col[i] = c; own[i] = idx; obj[i] = isObj ? 1 : 0; face[i] = f ? f.charCodeAt(0) : 0;
     }
     const persp = map.persp || 'iso', th = themeArt(map.theme);
-    if (persp !== 'iso') {
-      if (persp === 'dungeon') renderDungeon(map.dungeon, plot, mc, 8, 8, true, map.theme);
-      else VIEW_RENDERERS[persp](map, plot, mc, i => { idx = i; });
-      return { ink, col, own, obj };
-    }
-    for (let s = 0; s <= 2 * n - 2; s++) {
+    animFrame = Number.isInteger(map.frame) ? map.frame : null;
+    if (persp === 'dungeon') renderDungeon(map.dungeon, plot, mc, 8, 8, true, map.theme);
+    else if (persp !== 'iso') VIEW_RENDERERS[persp](map, plot, mc, i => { idx = i; });
+    else for (let s = 0; s <= 2 * n - 2; s++) {
       for (let gx = Math.max(0, s - n + 1); gx <= Math.min(s, n - 1); gx++) {
         const gy = s - gx, c = map.cells[gy * n + gx];
         idx = gy * n + gx;
         if (c.m < 0) continue;
         const mat = th.materials[c.m];
         const sx = ORIGIN_X + (gx - gy) * 16, base = BASE_Y + (gx + gy) * 8;
-        if (c.h === 0) drawBlock(plot, sx, base + 16, mat, mc, false);
-        else for (let z = 0; z < c.h; z++) drawBlock(plot, sx, base - z * 16, mat, mc, true);
+        drawBlock(plot, sx, base + 16 - 16 * c.h, mat, mc, 16 * c.h);
         if (c.o >= 0) drawObject(plot, th.objects[c.o], sx + 8 + (c.ox || 0), base + 16 - 16 * c.h - 8 + (c.oy || 0), mc);
+      }
+    }
+    animFrame = null;
+    // The top-down view has its own outlines built in.
+    if (map.outline && persp !== 'oblique') {
+      for (let y = 1; y < mapBottom; y++) if (y & 7) for (let x = 0; x < W; x++) {
+        const i = y * W + x, f = face[i], above = face[i - W];
+        if (f && above && f !== above) ink[i] = 0;
       }
     }
     return { ink, col, own, obj };
@@ -509,8 +536,8 @@
       ...blocks(2, 3, (p, m) => drawObliqueBlock(p, 0, 0, m, mc, 1, none)), ...objects(),
     ];
     if (persp === 'side') return [
-      make('Grass ground', 3, 1, p => drawSideBlock(p, 0, 8, mat('Grass'), mc, false)),
-      ...blocks(3, 3, (p, m) => drawSideBlock(p, 0, 8, m, mc, true)), ...objects(),
+      make('Grass ground', 3, 1, p => drawSideBlock(p, 0, 8, mat('Grass'), mc, 0)),
+      ...blocks(3, 3, (p, m) => drawSideBlock(p, 0, 8, m, mc, 16)), ...objects(),
     ];
     if (persp === 'dungeon') return [
       view('Corridor', ['#####', '##.##', '##.##', '##.##', '##.##']),
@@ -518,11 +545,11 @@
       view('Junction', ['#####', '##.##', '#...#', '##.##', '##.##']),
     ];
     return [
-      make('Grass floor', 4, 2, p => drawBlock(p, 0, 0, mat('Grass'), mc, false)),
-      make('Water floor', 4, 2, p => drawBlock(p, 0, 0, mat('Water'), mc, false)),
-      make('Grass cube', 4, 4, p => drawBlock(p, 0, 0, mat('Grass'), mc, true)),
-      make('Stone cube', 4, 4, p => drawBlock(p, 0, 0, mat('Stone'), mc, true)),
-      make('Brick cube', 4, 4, p => drawBlock(p, 0, 0, mat('Brick'), mc, true)),
+      make('Grass floor', 4, 2, p => drawBlock(p, 0, 0, mat('Grass'), mc, 0)),
+      make('Water floor', 4, 2, p => drawBlock(p, 0, 0, mat('Water'), mc, 0)),
+      make('Grass cube', 4, 4, p => drawBlock(p, 0, 0, mat('Grass'), mc, 16)),
+      make('Stone cube', 4, 4, p => drawBlock(p, 0, 0, mat('Stone'), mc, 16)),
+      make('Brick cube', 4, 4, p => drawBlock(p, 0, 0, mat('Brick'), mc, 16)),
       ...OBJECTS.map(ob => make(ob.name, 2, 3, p => drawObject(p, ob, 0, 0, mc))),
     ];
   }

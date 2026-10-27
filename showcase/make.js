@@ -161,6 +161,7 @@ async function heightScene(persp, outs) {
     cell.o = HERO;
     cell.ox = Math.round(dx * k / 2) * 2; // whole fat pixels, so multicolor frames stay clean
     cell.oy = Math.round(dy * k);
+    if (themed) m.frame = Math.floor(f / 5); // the theme videos animate water and torches, 5 frames a step
     m.caption = themed ? themeStatus(persp, theme) : status(persp, mode, `STEPS ${String(Math.floor(t)).padStart(3, '0')}`);
     await emit(renderMap(m));
   }
