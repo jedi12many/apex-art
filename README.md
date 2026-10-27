@@ -107,3 +107,7 @@ APEXSCII's themes (Classic, Crypt, Forest, Town) repaint every character set wit
 A map picks its theme with `map.theme`. A material can use a different texture per face, e.g. a roof on top of timbered walls; the compositor fills the junctions that creates from free slots.
 
 `node showcase/make.js --themes` renders the theme videos: the same walks in multicolor, switching theme every three seconds, which on a C64 is just a change of character set. `test/vice-check.js` also checks the demo map in every theme, perspective and mode.
+
+## Licence
+
+MIT, copyright (c) 2026 jedi12many; see [LICENSE](LICENSE). The character sets, generated files and tools may be used in any project, including commercial games, as long as the copyright notice is kept. The C64 ROM font is never included: the text glyphs are redrawn, and ROM-font previews read the `chargen` file from your own VICE install.
